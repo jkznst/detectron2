@@ -1,0 +1,18 @@
+_BASE_: "Base-Keypoint-RCNN-FPN.yaml"
+MODEL:
+  WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+  RESNETS:
+    DEPTH: 50
+  ROI_PVNET_HEAD:
+    VERTEX_WEIGHTS: 17.0
+  # KEYPOINT_ON: True
+  # PVNET_ON: False
+SOLVER: # for single GPUs
+  IMS_PER_BATCH: 2
+  BASE_LR: 0.0025
+  STEPS: (120000, 160000)
+  MAX_ITER: 180000
+  CHECKPOINT_PERIOD: 20000
+OUTPUT_DIR: "./output/sixdpose/coco/pvnet_kptrcnn_R_50_FPN_1x_vw17"
+# OUTPUT_DIR: "./output"
+# OUTPUT_DIR: "./output/sixdpose/coco/pvnet_kptrcnn_hmsize112_R_50_FPN_1x"  # worse than hmsize 56

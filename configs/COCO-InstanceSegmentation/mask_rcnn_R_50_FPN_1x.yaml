@@ -4,3 +4,9 @@ MODEL:
   MASK_ON: True
   RESNETS:
     DEPTH: 50
+  # for coco person keypoint
+#   ROI_HEADS:
+#     NUM_CLASSES: 1
+# DATASETS:
+#   TRAIN: ("keypoints_coco_2017_train",)
+#   TEST: ("keypoints_coco_2017_val",)

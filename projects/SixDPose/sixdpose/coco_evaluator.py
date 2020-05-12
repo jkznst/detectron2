@@ -13,7 +13,8 @@ import pycocotools.mask as mask_util
 import torch
 from fvcore.common.file_io import PathManager
 from pycocotools.coco import COCO
-from pycocotools.cocoeval import COCOeval
+# from pycocotools.cocoeval import COCOeval
+from .cocoeval import COCOeval
 from tabulate import tabulate
 
 import detectron2.utils.comm as comm
@@ -22,7 +23,7 @@ from detectron2.data.datasets.coco import convert_to_coco_json
 from detectron2.structures import Boxes, BoxMode, pairwise_iou
 from detectron2.utils.logger import create_small_table
 
-from .evaluator import DatasetEvaluator
+from detectron2.evaluation import DatasetEvaluator
 
 
 class COCOEvaluator(DatasetEvaluator):
@@ -44,13 +45,7 @@ class COCOEvaluator(DatasetEvaluator):
             cfg (CfgNode): config instance
             distributed (True): if True, will collect results from all ranks for evaluation.
                 Otherwise, will evaluate the results in the current process.
-            output_dir (str): optional, an output directory to dump all
-                results predicted on the dataset. The dump contains two files:
-
-                1. "instance_predictions.pth" a file in torch serialization
-                   format that contains all the raw original predictions.
-                2. "coco_instances_results.json" a json file in COCO's result
-                   format.
+            output_dir (str): optional, an output directory to dump results.
         """
         self._tasks = self._tasks_from_config(cfg)
         self._distributed = distributed
@@ -61,10 +56,7 @@ class COCOEvaluator(DatasetEvaluator):
 
         self._metadata = MetadataCatalog.get(dataset_name)
         if not hasattr(self._metadata, "json_file"):
-            self._logger.warning(
-                f"json_file was not found in MetaDataCatalog for '{dataset_name}'."
-                " Trying to convert it to COCO format ..."
-            )
+            self._logger.warning(f"json_file was not found in MetaDataCatalog for '{dataset_name}'")
 
             cache_path = os.path.join(output_dir, f"{dataset_name}_coco_format.json")
             self._metadata.json_file = cache_path
@@ -75,12 +67,14 @@ class COCOEvaluator(DatasetEvaluator):
             self._coco_api = COCO(json_file)
 
         self._kpt_oks_sigmas = cfg.TEST.KEYPOINT_OKS_SIGMAS
+        self._kpt_format = cfg.INPUT.KEYPOINT_FORMAT
         # Test set json files do not contain annotations (evaluation must be
         # performed using the COCO evaluation server).
         self._do_evaluation = "annotations" in self._coco_api.dataset
 
     def reset(self):
         self._predictions = []
+        self._coco_results = []
 
     def _tasks_from_config(self, cfg):
         """
@@ -92,8 +86,6 @@ class COCOEvaluator(DatasetEvaluator):
             tasks = tasks + ("segm",)
         if cfg.MODEL.KEYPOINT_ON:
             tasks = tasks + ("keypoints",)
-        if cfg.MODEL.PVNET_ON:
-            tasks = tasks + ("segm", "keypoints",)
         return tasks
 
     def process(self, inputs, outputs):
@@ -119,15 +111,13 @@ class COCOEvaluator(DatasetEvaluator):
     def evaluate(self):
         if self._distributed:
             comm.synchronize()
-            predictions = comm.gather(self._predictions, dst=0)
-            predictions = list(itertools.chain(*predictions))
+            self._predictions = comm.gather(self._predictions, dst=0)
+            self._predictions = list(itertools.chain(*self._predictions))
 
             if not comm.is_main_process():
                 return {}
-        else:
-            predictions = self._predictions
 
-        if len(predictions) == 0:
+        if len(self._predictions) == 0:
             self._logger.warning("[COCOEvaluator] Did not receive valid predictions.")
             return {}
 
@@ -135,30 +125,30 @@ class COCOEvaluator(DatasetEvaluator):
             PathManager.mkdirs(self._output_dir)
             file_path = os.path.join(self._output_dir, "instances_predictions.pth")
             with PathManager.open(file_path, "wb") as f:
-                torch.save(predictions, f)
+                torch.save(self._predictions, f)
 
         self._results = OrderedDict()
-        if "proposals" in predictions[0]:
-            self._eval_box_proposals(predictions)
-        if "instances" in predictions[0]:
-            self._eval_predictions(set(self._tasks), predictions)
+        if "proposals" in self._predictions[0]:
+            self._eval_box_proposals()
+        if "instances" in self._predictions[0]:
+            self._eval_predictions(set(self._tasks))
         # Copy so the caller can do whatever with results
         return copy.deepcopy(self._results)
 
-    def _eval_predictions(self, tasks, predictions):
+    def _eval_predictions(self, tasks):
         """
-        Evaluate predictions on the given tasks.
+        Evaluate self._predictions on the given tasks.
         Fill self._results with the metrics of the tasks.
         """
         self._logger.info("Preparing results for COCO format ...")
-        coco_results = list(itertools.chain(*[x["instances"] for x in predictions]))
+        self._coco_results = list(itertools.chain(*[x["instances"] for x in self._predictions]))
 
         # unmap the category ids for COCO
         if hasattr(self._metadata, "thing_dataset_id_to_contiguous_id"):
             reverse_id_mapping = {
                 v: k for k, v in self._metadata.thing_dataset_id_to_contiguous_id.items()
             }
-            for result in coco_results:
+            for result in self._coco_results:
                 category_id = result["category_id"]
                 assert (
                     category_id in reverse_id_mapping
@@ -171,7 +161,7 @@ class COCOEvaluator(DatasetEvaluator):
             file_path = os.path.join(self._output_dir, "coco_instances_results.json")
             self._logger.info("Saving results to {}".format(file_path))
             with PathManager.open(file_path, "w") as f:
-                f.write(json.dumps(coco_results))
+                f.write(json.dumps(self._coco_results))
                 f.flush()
 
         if not self._do_evaluation:
@@ -182,9 +172,9 @@ class COCOEvaluator(DatasetEvaluator):
         for task in sorted(tasks):
             coco_eval = (
                 _evaluate_predictions_on_coco(
-                    self._coco_api, coco_results, task, kpt_oks_sigmas=self._kpt_oks_sigmas
+                    self._coco_api, self._coco_results, task, kpt_oks_sigmas=self._kpt_oks_sigmas, kpt_format=self._kpt_format
                 )
-                if len(coco_results) > 0
+                if len(self._coco_results) > 0
                 else None  # cocoapi does not handle empty results very well
             )
 
@@ -193,9 +183,9 @@ class COCOEvaluator(DatasetEvaluator):
             )
             self._results[task] = res
 
-    def _eval_box_proposals(self, predictions):
+    def _eval_box_proposals(self):
         """
-        Evaluate the box proposals in predictions.
+        Evaluate the box proposals in self._predictions.
         Fill self._results with the metrics for "box_proposals" task.
         """
         if self._output_dir:
@@ -203,7 +193,7 @@ class COCOEvaluator(DatasetEvaluator):
             # Predicted box_proposals are in XYXY_ABS mode.
             bbox_mode = BoxMode.XYXY_ABS.value
             ids, boxes, objectness_logits = [], [], []
-            for prediction in predictions:
+            for prediction in self._predictions:
                 ids.append(prediction["image_id"])
                 boxes.append(prediction["proposals"].proposal_boxes.tensor.numpy())
                 objectness_logits.append(prediction["proposals"].objectness_logits.numpy())
@@ -226,7 +216,9 @@ class COCOEvaluator(DatasetEvaluator):
         areas = {"all": "", "small": "s", "medium": "m", "large": "l"}
         for limit in [100, 1000]:
             for area, suffix in areas.items():
-                stats = _evaluate_box_proposals(predictions, self._coco_api, area=area, limit=limit)
+                stats = _evaluate_box_proposals(
+                    self._predictions, self._coco_api, area=area, limit=limit
+                )
                 key = "AR{}@{:d}".format(suffix, limit)
                 res[key] = float(stats["ar"].item() * 100)
         self._logger.info("Proposal metrics: \n" + create_small_table(res))
@@ -253,19 +245,14 @@ class COCOEvaluator(DatasetEvaluator):
         }[iou_type]
 
         if coco_eval is None:
-            self._logger.warn("No predictions from the model!")
-            return {metric: float("nan") for metric in metrics}
+            self._logger.warn("No predictions from the model! Set scores to -1")
+            return {metric: -1 for metric in metrics}
 
         # the standard metrics
-        results = {
-            metric: float(coco_eval.stats[idx] * 100 if coco_eval.stats[idx] >= 0 else "nan")
-            for idx, metric in enumerate(metrics)
-        }
+        results = {metric: float(coco_eval.stats[idx] * 100) for idx, metric in enumerate(metrics)}
         self._logger.info(
             "Evaluation results for {}: \n".format(iou_type) + create_small_table(results)
         )
-        if not np.isfinite(sum(results.values())):
-            self._logger.info("Note that some metrics cannot be computed.")
 
         if class_names is None or len(class_names) <= 1:
             return results
@@ -351,13 +338,13 @@ def instances_to_coco_json(instances, img_id):
         }
         if has_mask:
             result["segmentation"] = rles[k]
-        if has_keypoints:
+        if has_keypoints:   # TODO
             # In COCO annotations,
             # keypoints coordinates are pixel indices.
             # However our predictions are floating point coordinates.
             # Therefore we subtract 0.5 to be consistent with the annotation format.
             # This is the inverse of data loading logic in `datasets/coco.py`.
-            keypoints[k][:, :2] -= 0.5
+            # keypoints[k][:, :2] -= 0.5
             result["keypoints"] = keypoints[k].flatten().tolist()
         results.append(result)
     return results
@@ -453,9 +440,7 @@ def _evaluate_box_proposals(dataset_predictions, coco_api, thresholds=None, area
 
         # append recorded iou coverage level
         gt_overlaps.append(_gt_overlaps)
-    gt_overlaps = (
-        torch.cat(gt_overlaps, dim=0) if len(gt_overlaps) else torch.zeros(0, dtype=torch.float32)
-    )
+    gt_overlaps = torch.cat(gt_overlaps, dim=0)
     gt_overlaps, _ = torch.sort(gt_overlaps)
 
     if thresholds is None:
@@ -476,7 +461,7 @@ def _evaluate_box_proposals(dataset_predictions, coco_api, thresholds=None, area
     }
 
 
-def _evaluate_predictions_on_coco(coco_gt, coco_results, iou_type, kpt_oks_sigmas=None):
+def _evaluate_predictions_on_coco(coco_gt, coco_results, iou_type, kpt_oks_sigmas=None, kpt_format='bb8+fps8'):
     """
     Evaluate the coco results using COCOEval API.
     """
@@ -492,7 +477,7 @@ def _evaluate_predictions_on_coco(coco_gt, coco_results, iou_type, kpt_oks_sigma
             c.pop("bbox", None)
 
     coco_dt = coco_gt.loadRes(coco_results)
-    coco_eval = COCOeval(coco_gt, coco_dt, iou_type)
+    coco_eval = COCOeval(coco_gt, coco_dt, iou_type, kpt_format)
     # Use the COCO default keypoint OKS sigmas unless overrides are specified
     if kpt_oks_sigmas:
         coco_eval.params.kpt_oks_sigmas = np.array(kpt_oks_sigmas)
