@@ -11,4 +11,5 @@ from .dataset_mapper import DatasetMapper, COCODatasetMapper
 # from .pose_evaluator import SixDPoseEvaluator
 
 from .fpg import build_resnet_fpg_backbone, FPG
-from .resneth import build_crpnet_resneth_fpn_backbone
+from .resneth import build_crpnet_resneth_fpn_backbone, build_crpnet_resnet_fpn_backbone
+from .crpnet import CRPNet

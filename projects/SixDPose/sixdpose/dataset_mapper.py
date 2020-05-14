@@ -384,7 +384,7 @@ class COCODatasetMapper:
         self.img_format     = cfg.INPUT.FORMAT
         self.mask_on        = cfg.MODEL.MASK_ON or cfg.MODEL.PVNET_ON
         self.mask_format    = cfg.INPUT.MASK_FORMAT
-        self.keypoint_on    = cfg.MODEL.KEYPOINT_ON or cfg.MODEL.PVNET_ON
+        self.keypoint_on    = cfg.MODEL.KEYPOINT_ON or cfg.MODEL.PVNET_ON or cfg.MODEL.CRPNET_ON
         self.load_proposals = cfg.MODEL.LOAD_PROPOSALS
         # fmt: on
         if self.keypoint_on and is_train:

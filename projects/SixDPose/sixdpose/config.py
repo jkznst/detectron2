@@ -10,7 +10,8 @@ def add_sixdpose_config(cfg):
     """
     _C = cfg
 
-    _C.MODEL.PVNET_ON = True
+    _C.MODEL.PVNET_ON = False
+    _C.MODEL.CRPNET_ON = False
 
     _C.MODEL.ROI_PVNET_HEAD = CN()
     # _C.MODEL.ROI_PVNET_HEAD.NAME = "MaskRCNNConvUpsampleHead"
@@ -85,9 +86,10 @@ def add_sixdpose_config(cfg):
 
     # Number of groups to use; 1 ==> ResNet; > 1 ==> ResNeXt
     _C.MODEL.RESNETH.NUM_GROUPS = 1
+    _C.MODEL.RESNETH.FREEZE_AT = 1
 
     # Options: FrozenBN, GN, "SyncBN", "BN"
-    _C.MODEL.RESNETH.NORM = "FrozenBN"
+    _C.MODEL.RESNETH.NORM = "SyncBN"
 
     # Baseline width of each group.
     # Scaling this parameters will scale the width of all bottleneck layers.
@@ -102,7 +104,7 @@ def add_sixdpose_config(cfg):
 
     # Output width of res2. Scaling this parameters will scale the width of all 1x1 convs in ResNet
     # _C.MODEL.RESNETH.RES2_OUT_CHANNELS = 256
-    # _C.MODEL.RESNETH.STEM_OUT_CHANNELS = 64
+    _C.MODEL.RESNETH.STEM_OUT_CHANNELS = 64
 
     # Apply Deformable Convolution in stages
     # Specify if apply deform_conv on Res2, Res3, Res4, Res5
@@ -112,3 +114,47 @@ def add_sixdpose_config(cfg):
     _C.MODEL.RESNETH.DEFORM_MODULATED = False
     # Number of groups in deformable conv.
     _C.MODEL.RESNETH.DEFORM_NUM_GROUPS = 1
+
+    # ---------------------------------------------------------------------------- #
+    # CRPNet Head
+    # ---------------------------------------------------------------------------- #
+    _C.MODEL.CRPNET = CN()
+
+    _C.MODEL.CRPNET.CASCADE_REGRESSION = True
+    _C.MODEL.CRPNET.KPT_WEIGHT = 1.0
+
+    # This is the number of foreground classes.
+    _C.MODEL.CRPNET.NUM_CLASSES = 80
+
+    _C.MODEL.CRPNET.IN_FEATURES = ["p3", "p4", "p5", "p6", "p7"]
+
+    # Convolutions to use in the cls and bbox tower
+    # NOTE: this doesn't include the last conv for logits
+    _C.MODEL.CRPNET.NUM_CONVS = 0
+    _C.MODEL.CRPNET.NUM_KEYPOINTS = 17 # test coco
+
+    # IoU overlap ratio [bg, fg] for labeling anchors.
+    # Anchors with < bg are labeled negative (0)
+    # Anchors  with >= bg and < fg are ignored (-1)
+    # Anchors with >= fg are labeled positive (1)
+    _C.MODEL.CRPNET.IOU_THRESHOLDS = [0.4, 0.5]
+    _C.MODEL.CRPNET.IOU_LABELS = [0, -1, 1]
+
+    # Prior prob for rare case (i.e. foreground) at the beginning of training.
+    # This is used to set the bias for the logits layer of the classifier subnet.
+    # This improves training stability in the case of heavy class imbalance.
+    _C.MODEL.CRPNET.PRIOR_PROB = 0.01
+
+    # Inference cls score threshold, only anchors with score > INFERENCE_TH are
+    # considered for inference (to improve speed)
+    _C.MODEL.CRPNET.SCORE_THRESH_TEST = 0.05
+    _C.MODEL.CRPNET.TOPK_CANDIDATES_TEST = 1000
+    _C.MODEL.CRPNET.NMS_THRESH_TEST = 0.5
+
+    # Weights on (dx, dy, dw, dh) for normalizing Retinanet anchor regression targets
+    _C.MODEL.CRPNET.BBOX_REG_WEIGHTS = (1.0, 1.0, 1.0, 1.0)
+
+    # Loss parameters
+    _C.MODEL.CRPNET.FOCAL_LOSS_GAMMA = 2.0
+    _C.MODEL.CRPNET.FOCAL_LOSS_ALPHA = 0.25
+    _C.MODEL.CRPNET.SMOOTH_L1_LOSS_BETA = 0.1
