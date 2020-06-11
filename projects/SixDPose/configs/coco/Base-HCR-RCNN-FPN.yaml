@@ -1,0 +1,43 @@
+_BASE_: "Base-RCNN-FPN.yaml"
+MODEL:
+  HCR_ON: True
+  BACKBONE:
+    NAME: "build_crpnet_resneth_fpn_backbone"
+  RESNETH:
+    OUT_FEATURES: ["res3", "res4", "res5"]
+    DILATION_ON_PER_STAGE: [False, False, False, False]
+  FPN:
+    IN_FEATURES: ["res3", "res4", "res5"]
+  ANCHOR_GENERATOR:
+    SIZES: [[16], [32], [64], [128], [256]]  # One size for each in feature map
+    ASPECT_RATIOS: [[0.5, 1.0, 2.0]]  # Three aspect ratios (same for all in feature maps)
+  RPN:
+    IN_FEATURES: ["p3", "p4", "p5", "p6", "p7"]
+    PRE_NMS_TOPK_TRAIN: 2000  # Per FPN level
+    PRE_NMS_TOPK_TEST: 1000  # Per FPN level
+    # Detectron1 uses 2000 proposals per-batch,
+    # (See "modeling/rpn/rpn_outputs.py" for details of this legacy issue)
+    # which is approximately 1000 proposals per-image since the default batch size for FPN is 2.
+    # Detectron1 uses 2000 proposals per-batch, but this option is per-image in detectron2.
+    # 1000 proposals per-image is found to hurt box AP.
+    # Therefore we increase it to 1500 per-image.
+    POST_NMS_TOPK_TRAIN: 1500
+    POST_NMS_TOPK_TEST: 1000
+  ROI_HEADS:
+    NUM_CLASSES: 1
+    NAME: "HCRROIHeads"
+    IN_FEATURES: ["p3", "p4", "p5", "p6"]
+  ROI_BOX_HEAD:
+    SMOOTH_L1_BETA: 0.5  # Keypoint AP degrades (though box AP improves) when using plain L1 loss
+    TRAIN_ON_PRED_BOXES: False
+  ROI_HCR_HEAD:
+    NAME: "HCRConvHead"
+    HEATMAP_SIZE: 14
+    HEATMAP_WEIGHTS: 1.0
+    OFFSET_WEIGHTS: 1.0
+    TRANSITION_ON: False
+DATASETS:
+  TRAIN: ("keypoints_coco_2017_train",)
+  TEST: ("keypoints_coco_2017_val",)
+INPUT:
+  MIN_SIZE_TRAIN: (288, 320, 352, 384, 416, 448, 480)

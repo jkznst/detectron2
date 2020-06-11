@@ -10,8 +10,9 @@ def add_sixdpose_config(cfg):
     """
     _C = cfg
 
-    _C.MODEL.PVNET_ON = False
     _C.MODEL.CRPNET_ON = False
+    _C.MODEL.HCR_ON = False
+    _C.MODEL.PVNET_ON = False
 
     _C.MODEL.ROI_PVNET_HEAD = CN()
     # _C.MODEL.ROI_PVNET_HEAD.NAME = "MaskRCNNConvUpsampleHead"
@@ -28,7 +29,7 @@ def add_sixdpose_config(cfg):
     _C.MODEL.ROI_PVNET_HEAD.HEATMAP_SIZE = 56
     _C.MODEL.ROI_PVNET_HEAD.POOLER_TYPE = "ROIAlignV2"
     _C.MODEL.ROI_PVNET_HEAD.POOLER_RESOLUTION = 14
-    _C.MODEL.ROI_PVNET_HEAD.POOLER_SAMPLING_RATIO = 2
+    _C.MODEL.ROI_PVNET_HEAD.POOLER_SAMPLING_RATIO = 0
     # Overlap threshold for an RoI to be considered foreground (if >= FG_IOU_THRESHOLD)
     _C.MODEL.ROI_PVNET_HEAD.FG_IOU_THRESHOLD = 0.7
     # # Loss weights for annotation masks.(14 Parts)
@@ -158,3 +159,37 @@ def add_sixdpose_config(cfg):
     _C.MODEL.CRPNET.FOCAL_LOSS_GAMMA = 2.0
     _C.MODEL.CRPNET.FOCAL_LOSS_ALPHA = 0.25
     _C.MODEL.CRPNET.SMOOTH_L1_LOSS_BETA = 0.1
+
+    # ---------------------------------------------------------------------------- #
+    # HCR keypoint Head
+    # ---------------------------------------------------------------------------- #
+    _C.MODEL.ROI_HCR_HEAD = CN()
+    _C.MODEL.ROI_HCR_HEAD.NAME = "HCRConvHead"
+    # _C.MODEL.ROI_HCR_HEAD.NAME = "KRCNNConvDeconvUpsampleHead"
+    _C.MODEL.ROI_HCR_HEAD.NUM_STACKED_CONVS = 4   # densepose is 8
+    _C.MODEL.ROI_HCR_HEAD.CONV_HEAD_DIM = 256     # densepose is 512
+    # _C.MODEL.ROI_PVNET_HEAD.CONV_HEAD_KERNEL = 3
+    _C.MODEL.ROI_HCR_HEAD.NORM = ""
+    _C.MODEL.ROI_HCR_HEAD.CLS_AGNOSTIC_KEYPOINT = False
+    _C.MODEL.ROI_HCR_HEAD.NUM_KEYPOINTS = 17 # test coco
+    _C.MODEL.ROI_HCR_HEAD.KEYPOINT_REG_WEIGHT = 10.0
+    
+    # _C.MODEL.ROI_HCR_HEAD.DECONV_KERNEL = 4
+    # _C.MODEL.ROI_HCR_HEAD.UP_SCALE = 2
+    _C.MODEL.ROI_HCR_HEAD.HEATMAP_SIZE = 56
+    _C.MODEL.ROI_HCR_HEAD.POOLER_TYPE = "ROIAlignV2"
+    _C.MODEL.ROI_HCR_HEAD.POOLER_RESOLUTION = 14
+    _C.MODEL.ROI_HCR_HEAD.POOLER_SAMPLING_RATIO = 0
+    # Overlap threshold for an RoI to be considered foreground (if >= FG_IOU_THRESHOLD)
+    _C.MODEL.ROI_HCR_HEAD.FG_IOU_THRESHOLD = 0.7
+    # # Loss weights for annotation masks.(14 Parts)
+    _C.MODEL.ROI_HCR_HEAD.HEATMAP_WEIGHTS = 1.0
+    # # Loss weights for VERTEX
+    _C.MODEL.ROI_HCR_HEAD.OFFSET_WEIGHTS = 2.0
+
+    # For Transition module
+    _C.MODEL.ROI_HCR_HEAD.TRANSITION_ON = False
+    _C.MODEL.ROI_HCR_HEAD.TRANSITION_NUM_CLASSES = 256
+    _C.MODEL.ROI_HCR_HEAD.TRANSITION_CONV_DIMS = 256
+    _C.MODEL.ROI_HCR_HEAD.TRANSITION_NORM = ""
+    _C.MODEL.ROI_HCR_HEAD.TRANSITION_COMMON_STRIDE = 4

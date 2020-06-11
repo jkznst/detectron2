@@ -92,8 +92,8 @@ class COCOEvaluator(DatasetEvaluator):
             tasks = tasks + ("segm",)
         if cfg.MODEL.KEYPOINT_ON:
             tasks = tasks + ("keypoints",)
-        if cfg.MODEL.PVNET_ON:
-            tasks = tasks + ("segm", "keypoints",)
+        # if cfg.MODEL.PVNET_ON:
+        #     tasks = tasks + ("segm", "keypoints",)
         return tasks
 
     def process(self, inputs, outputs):

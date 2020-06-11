@@ -9,7 +9,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 from detectron2.layers import Conv2d, ShapeSpec, get_norm
-from detectron2.modeling import ROI_HEADS_REGISTRY, StandardROIHeads
+from detectron2.modeling import ROI_HEADS_REGISTRY, StandardROIHeads, ROIHeads
 from detectron2.modeling.poolers import ROIPooler
 from detectron2.modeling.roi_heads import select_foreground_proposals
 
@@ -18,6 +18,13 @@ from .pvnet_head import (
     build_pvnet_head,
     build_pvnet_losses,
     pvnet_inference,
+)
+
+from .hcr_head import (
+    build_hcr_data_filter,
+    build_hcr_head,
+    build_hcr_losses,
+    hcr_inference,
 )
 
 class Decoder(nn.Module):
@@ -186,4 +193,116 @@ class SixDPoseROIHeads(StandardROIHeads):
             losses.update(self._forward_pvnet(features_list, instances))
         else:
             instances = self._forward_pvnet(features_list, instances)
+        return instances, losses
+
+
+@ROI_HEADS_REGISTRY.register()
+class HCRROIHeads(StandardROIHeads):
+    """
+    A Standard ROIHeads which contains an addition of PVNet head.
+    """
+
+    def __init__(self, cfg, input_shape):
+        super().__init__(cfg, input_shape)
+        self._init_hcr_head(cfg, input_shape)
+
+    def _init_hcr_head(self, cfg, input_shape):
+        # fmt: off
+        self.hcr_on          = cfg.MODEL.HCR_ON
+        if not self.hcr_on:
+            return
+        self.hcr_data_filter = build_hcr_data_filter(cfg)
+        hcr_pooler_resolution       = cfg.MODEL.ROI_HCR_HEAD.POOLER_RESOLUTION
+        # pvnet_pooler_scales           = tuple(1.0 / self.feature_strides[k] for k in self.in_features)
+        hcr_pooler_sampling_ratio   = cfg.MODEL.ROI_HCR_HEAD.POOLER_SAMPLING_RATIO
+        hcr_pooler_type             = cfg.MODEL.ROI_HCR_HEAD.POOLER_TYPE
+        self.use_decoder              = cfg.MODEL.ROI_HCR_HEAD.TRANSITION_ON
+        # fmt: on
+        if self.use_decoder:
+            hcr_pooler_scales = (1.0 / input_shape[self.in_features[0]].stride,)
+        else:
+            hcr_pooler_scales = tuple(1.0 / input_shape[k].stride for k in self.in_features)
+
+        in_channels = [self.feature_channels[f] for f in self.in_features][0]
+
+        if self.use_decoder:
+            self.decoder = Decoder(cfg, input_shape, self.in_features)
+
+        self.hcr_pooler = ROIPooler(
+            output_size=hcr_pooler_resolution,
+            scales=hcr_pooler_scales,
+            sampling_ratio=hcr_pooler_sampling_ratio,
+            pooler_type=hcr_pooler_type,
+        )
+        self.hcr_head = build_hcr_head(cfg, in_channels)
+        # self.pvnet_predictor = build_pvnet_predictor(
+        #     cfg, self.pvnet_head.n_out_channels
+        # )
+        self.hcr_losses = build_hcr_losses(cfg)
+
+    def _forward_hcr(self, features, instances):
+        """
+        Forward logic of the pvnet prediction branch.
+
+        Args:
+            features (list[Tensor]): #level input features for densepose prediction
+            instances (list[Instances]): the per-image instances to train/predict densepose.
+                In training, they can be the proposals.
+                In inference, they can be the predicted boxes.
+
+        Returns:
+            In training, a dict of losses.
+            In inference, update `instances` with new fields "densepose" and return it.
+        """
+        if not self.hcr_on:
+            return {} if self.training else instances
+
+        # features = [features[f] for f in self.in_features]
+        if self.training:
+            proposals, _ = select_foreground_proposals(instances, self.num_classes)
+            proposals_hcr = self.hcr_data_filter(proposals)
+            # proposals_hcr = proposals
+            # print(len(proposals_pvnet[0]))
+            if len(proposals_hcr) > 0:
+                proposal_boxes = [x.proposal_boxes for x in proposals_hcr]
+
+                if self.use_decoder:
+                    features = [self.decoder(features)]
+
+                features_hcr = self.hcr_pooler(features, proposal_boxes)
+                hcr_head_outputs = self.hcr_head(features_hcr)
+                # pvnet_outputs, _ = self.pvnet_predictor(pvnet_head_outputs)
+                hcr_loss_dict = self.hcr_losses(proposals_hcr, hcr_head_outputs)
+                return hcr_loss_dict
+            elif len(proposals_hcr) == 0:
+                return {}
+        else:
+            pred_boxes = [x.pred_boxes for x in instances]
+
+            if self.use_decoder:
+                features = [self.decoder(features)]
+                
+            features_hcr = self.hcr_pooler(features, pred_boxes)
+            if len(features_hcr) > 0:
+                hcr_outputs = self.hcr_head(features_hcr)
+                # pvnet_outputs, _ = self.pvnet_predictor(pvnet_head_outputs)
+            else:
+                # If no detection occurred instances
+                # set pvnet_outputs to empty tensors
+                empty_tensor = torch.zeros(size=(0, 0, 0, 0), device=features_hcr.device)
+                hcr_outputs = {'heatmap': empty_tensor, 'offset': empty_tensor, 'variance': empty_tensor}
+
+            hcr_inference(hcr_outputs, instances)
+            return instances
+
+    def forward(self, images, features, proposals, targets=None):
+        features_list = [features[f] for f in self.in_features]
+
+        instances, losses = super().forward(images, features, proposals, targets)
+        del targets, images
+
+        if self.training:
+            losses.update(self._forward_hcr(features_list, instances))
+        else:
+            instances = self._forward_hcr(features_list, instances)
         return instances, losses

@@ -2,7 +2,8 @@
 
 from .config import add_sixdpose_config
 from .pvnet_head import ROI_PVNET_HEAD_REGISTRY
-from .roi_head import SixDPoseROIHeads
+from .hcr_head import ROI_HCR_HEAD_REGISTRY
+from .roi_head import SixDPoseROIHeads, HCRROIHeads
 
 # test coco
 # from . import dataset  # just to register data

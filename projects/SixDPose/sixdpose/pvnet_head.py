@@ -219,6 +219,7 @@ def build_pvnet_data_filter(cfg):
     dp_filter = PVNetDataFilter(cfg)
     return dp_filter
 
+@torch.no_grad()
 def decode_keypoints(vertexs, mask_probs, rois, mask_prob_threshold=0.5):
     '''
     Arguments:
@@ -341,6 +342,7 @@ def compute_vertex(masks, kpt_2d):
     
     return vertex_out.reshape(n, h, w, num_kpt * 2)
 
+@torch.no_grad()
 def keypoints_to_vertex(
     keypoints: torch.Tensor, rois: torch.Tensor, masks: torch.Tensor, heatmap_size: int):
     """

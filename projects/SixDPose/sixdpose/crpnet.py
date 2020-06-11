@@ -455,11 +455,17 @@ class CRPNet(nn.Module):
 
                 # ground truth keypoint regression
                 matched_gt_kpts = targets_per_image.gt_keypoints[gt_matched_idxs]
+                # print(matched_gt_kpts.tensor[0])
                 if self.cascade_regression:
                     # TODO: test if we should use gt bbox or pred bbox
                     gt_kpt_reg_deltas_i = self.box2kpt_transform.get_deltas(
                         matched_gt_boxes.tensor, matched_gt_kpts.tensor
                     )
+                    # print(gt_kpt_reg_deltas_i[0])
+                    # test_kpt = self.box2kpt_transform.apply_deltas(
+                    #     gt_kpt_reg_deltas_i, matched_gt_boxes.tensor
+                    # )
+                    # print(test_kpt[0])
                 else:
                     gt_kpt_reg_deltas_i = self.box2kpt_transform.get_deltas(
                         anchors_per_image.tensor, matched_gt_kpts.tensor
@@ -619,16 +625,27 @@ class CRPNetHead(nn.Module):
         kpt_subnet = []
         for _ in range(num_convs):
             cls_subnet.append(
-                nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1)
-            )
+                nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1,
+                groups=in_channels))
             cls_subnet.append(nn.ReLU())
+            cls_subnet.append(
+                nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1))
+            cls_subnet.append(nn.ReLU())
+
             bbox_subnet.append(
-                nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1)
-            )
+                nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1,
+                groups=in_channels))
             bbox_subnet.append(nn.ReLU())
+            bbox_subnet.append(
+                nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1))
+            bbox_subnet.append(nn.ReLU())
+
             kpt_subnet.append(
-                nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1)
-            )
+                nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1,
+                groups=in_channels))
+            kpt_subnet.append(nn.ReLU())
+            kpt_subnet.append(
+                nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1))
             kpt_subnet.append(nn.ReLU())
 
         self.cls_subnet = nn.Sequential(*cls_subnet)

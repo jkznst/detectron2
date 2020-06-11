@@ -8,6 +8,7 @@ It is an example of how a user might use detectron2 for a new project.
 """
 
 import os
+import torch
 
 import detectron2.utils.comm as comm
 from detectron2.checkpoint import DetectionCheckpointer
@@ -40,6 +41,33 @@ class Trainer(DefaultTrainer):
     def build_train_loader(cls, cfg):
         return build_detection_train_loader(cfg, mapper=COCODatasetMapper(cfg, True))
 
+    # def resume_or_load(self, resume=True):
+    #     """
+    #     If `resume==True`, and last checkpoint exists, resume from it.
+
+    #     Otherwise, load a model specified by the config.
+
+    #     Args:
+    #         resume (bool): whether to do resume or not
+    #     """
+    #     # The checkpoint stores the training iteration that just finished, thus we start
+    #     # at the next iteration (or iter zero if there's no checkpoint).
+    #     self.checkpointer.resume_or_load(self.cfg.MODEL.WEIGHTS, resume=resume)
+
+    #     if resume:
+    #         self.start_iter = (self.checkpointer.get("iteration", -1) + 1)
+    #     else:
+    #         self.start_iter = 0
+
+    def export(self, name=""):
+        # export 'model', discard 'optimizer', 'scheduler', 'iteration'
+        data = {}
+        data["model"] = self.checkpointer.model.state_dict()
+        basename = "{}.pth".format(name)
+        save_file = os.path.join(self.checkpointer.save_dir, basename)
+        assert os.path.basename(save_file) == basename, basename
+        with open(save_file, "wb") as f:
+            torch.save(data, f)
 
 def setup(args):
     cfg = get_cfg()
@@ -68,6 +96,7 @@ def main(args):
 
     trainer = Trainer(cfg)
     trainer.resume_or_load(resume=args.resume)
+    # trainer.export(name="retinanet_Rh_50_FPN_3x")
     return trainer.train()
 
 

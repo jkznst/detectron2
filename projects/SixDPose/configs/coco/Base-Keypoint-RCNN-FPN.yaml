@@ -1,5 +1,6 @@
 _BASE_: "Base-RCNN-FPN.yaml"
 MODEL:
+  PVNET_ON: True
   KEYPOINT_ON: False
   ROI_HEADS:
     NUM_CLASSES: 1

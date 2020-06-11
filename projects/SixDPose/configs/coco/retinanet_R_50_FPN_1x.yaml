@@ -1,0 +1,17 @@
+_BASE_: "./Base-RetinaNet.yaml"
+MODEL:
+  WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+  ANCHOR_GENERATOR:
+    SIZES: !!python/object/apply:eval ["[[x, x * 2**(1.0/3), x * 2**(2.0/3) ] for x in [16, 32, 64, 128, 256 ]]"]
+SOLVER: # for single GPUs
+  IMS_PER_BATCH: 2
+  BASE_LR: 0.00125
+  STEPS: (480000, 640000)
+  MAX_ITER: 720000
+  CHECKPOINT_PERIOD: 80000
+INPUT:
+  MIN_SIZE_TRAIN: (288, 320, 352, 384, 416, 448, 480)
+  MAX_SIZE_TRAIN: 800
+  MIN_SIZE_TEST: 416
+  MAX_SIZE_TEST: 800
+OUTPUT_DIR: "./output/sixdpose/coco/retinanet_R_50_FPN_1x"
