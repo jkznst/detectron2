@@ -96,7 +96,7 @@ def main(args):
 
     trainer = Trainer(cfg)
     trainer.resume_or_load(resume=args.resume)
-    # trainer.export(name="retinanet_Rh_50_FPN_3x")
+    # trainer.export(name="retinanet_Rh_50_FPN_128_dw_3x")
     return trainer.train()
 
 
