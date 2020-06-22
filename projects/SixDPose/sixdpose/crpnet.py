@@ -437,13 +437,18 @@ class CRPNet(nn.Module):
         anchors = [Boxes.cat(anchors_i) for anchors_i in anchors]
         # list[Tensor(R, 4)], one for each image
 
-        for anchors_per_image, targets_per_image in zip(anchors, targets):
+        pred_bbox_delta = [permute_to_N_HWA_K(x, 4) for x in pred_bbox_delta]
+
+        for img_idx, (anchors_per_image, targets_per_image) in enumerate(zip(anchors, targets)):
             match_quality_matrix = pairwise_iou(targets_per_image.gt_boxes, anchors_per_image)
             gt_matched_idxs, anchor_labels = self.matcher(match_quality_matrix)
             # print(gt_matched_idxs.size())
             # print(gt_matched_idxs[0:10])
             # print(anchor_labels[0:10])
             # print(targets_per_image)
+
+            pred_box_delta_per_image = [box_reg_per_level[img_idx] for box_reg_per_level in pred_bbox_delta]
+            pred_box_delta_per_image = Boxes.cat(pred_box_delta_per_image)  # Tensor(R, 4), R=A*(H1*W1 + H2*W2 + ...)
 
             has_gt = len(targets_per_image) > 0
             if has_gt:
@@ -457,6 +462,7 @@ class CRPNet(nn.Module):
                 matched_gt_kpts = targets_per_image.gt_keypoints[gt_matched_idxs]
                 # print(matched_gt_kpts.tensor[0])
                 if self.cascade_regression:
+                    predicted_boxes = self.box2box_transform.apply_deltas(pred_box_delta_per_image, anchors_per_image.tensor)
                     # TODO: test if we should use gt bbox or pred bbox
                     gt_kpt_reg_deltas_i = self.box2kpt_transform.get_deltas(
                         matched_gt_boxes.tensor, matched_gt_kpts.tensor
@@ -698,3 +704,67 @@ class CRPNetHead(nn.Module):
             bbox_reg.append(self.bbox_pred(self.bbox_subnet(feature)))
             kpt_reg.append(self.kpt_pred(self.kpt_subnet(feature)))
         return logits, bbox_reg, kpt_reg
+
+
+class SSDHead(nn.Module):
+    """
+    The head used in SSD for object classification and box regression.
+    Does not share parameters across feature levels.
+    """
+
+    def __init__(self, cfg, input_shape: List[ShapeSpec]):
+        super().__init__()
+        # fmt: off
+        in_channels      = [f.channels for f in input_shape]
+        num_classes      = cfg.MODEL.RETINANET.NUM_CLASSES
+        prior_prob       = cfg.MODEL.RETINANET.PRIOR_PROB
+        num_anchors      = build_anchor_generator(cfg, input_shape).num_cell_anchors
+        # fmt: on
+        assert (
+            len(set(num_anchors)) == 1
+        ), "Using different number of anchors between levels is not currently supported!"
+        num_anchors = num_anchors[0]
+
+        # Use prior in model initialization to improve stability
+        bias_value = -math.log((1 - prior_prob) / prior_prob)
+
+        for i, in_channel in enumerate(in_channels):
+            cls_score = nn.Conv2d(
+                in_channel, num_anchors * num_classes, kernel_size=3, stride=1, padding=1
+                )
+            torch.nn.init.normal_(cls_score.weight, mean=0, std=0.01)
+            torch.nn.init.constant_(cls_score.bias, bias_value)
+            self.add_module("p{}_cls_score".format(i + 3), cls_score)
+
+            bbox_pred = nn.Conv2d(
+                in_channel, num_anchors * 4, kernel_size=3, stride=1, padding=1
+                )
+            torch.nn.init.normal_(bbox_pred.weight, mean=0, std=0.01)
+            torch.nn.init.constant_(bbox_pred.bias, 0)
+            self.add_module("p{}_bbox_pred".format(i + 3), bbox_pred)
+            
+
+    def forward(self, features):
+        """
+        Arguments:
+            features (list[Tensor]): FPN feature map tensors in high to low resolution.
+                Each tensor in the list correspond to different feature levels.
+
+        Returns:
+            logits (list[Tensor]): #lvl tensors, each has shape (N, AxK, Hi, Wi).
+                The tensor predicts the classification probability
+                at each spatial position for each of the A anchors and K object
+                classes.
+            bbox_reg (list[Tensor]): #lvl tensors, each has shape (N, Ax4, Hi, Wi).
+                The tensor predicts 4-vector (dx,dy,dw,dh) box
+                regression values for every anchor. These values are the
+                relative offset between the anchor and the ground truth box.
+        """
+        logits = []
+        bbox_reg = []
+        for i, feature in enumerate(features):
+            cls_score = getattr(self, "p{}_cls_score".format(i + 3))
+            bbox_pred = getattr(self, "p{}_bbox_pred".format(i + 3))
+            logits.append(cls_score(feature))
+            bbox_reg.append(bbox_pred(feature))
+        return logits, bbox_reg

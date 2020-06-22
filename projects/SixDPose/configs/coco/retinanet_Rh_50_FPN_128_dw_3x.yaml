@@ -1,0 +1,30 @@
+_BASE_: "./Base-RetinaNet.yaml"
+MODEL:
+  # WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+  WEIGHTS: "models/retinanet_Rh_50_FPN_128_dw_3x.pth"
+  BACKBONE:
+    NAME: "build_crpnet_resneth_fpn_backbone"
+  RESNETH:
+    DEPTH: 50
+    FREEZE_AT: 1
+    NORM: "SyncBN"
+    OUT_FEATURES: ["res3", "res4", "res5"]
+    DILATION_ON_PER_STAGE: [False, False, False, True]
+  ANCHOR_GENERATOR:
+    SIZES: !!python/object/apply:eval ["[[x, x * 2**(1.0/3), x * 2**(2.0/3) ] for x in [16, 32, 64, 128, 256 ]]"]
+  FPN:
+    OUT_CHANNELS: 128
+  RETINANET: 
+    NUM_CONVS: 1
+SOLVER: # for single GPUs
+  IMS_PER_BATCH: 2
+  BASE_LR: 0.00125  # original 0.00125
+  STEPS: (1440000, 1920000)
+  MAX_ITER: 2160000
+  CHECKPOINT_PERIOD: 40000
+INPUT:
+  MIN_SIZE_TRAIN: (320, 352, 384, 416, 448, 480)
+  MAX_SIZE_TRAIN: 800
+  MIN_SIZE_TEST: 416
+  MAX_SIZE_TEST: 800
+OUTPUT_DIR: "./output/sixdpose/coco/retinanet_Rh_50_FPN_128_dw_3x_res5d"

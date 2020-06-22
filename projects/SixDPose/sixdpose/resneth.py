@@ -309,7 +309,8 @@ class CSPStage(nn.Module):
         self.stride = first_stride
         use_dilation = kwargs["dilation"]
         in_channels = kwargs["in_channels"]
-        self.out_channels = kwargs["out_channels"]
+        out_channels = kwargs["out_channels"]
+        self.out_channels = out_channels
         norm = kwargs["norm"]
 
         if first_stride == 1:   # stage 2
@@ -363,6 +364,7 @@ class CSPStage(nn.Module):
                 in_channels // 2,
                 kernel_size=3,
                 stride=first_stride,
+                padding=1,
                 bias=False,
                 norm=get_norm(norm, in_channels // 2),
             )
@@ -403,6 +405,7 @@ class CSPStage(nn.Module):
                 norm=get_norm(norm, out_channels // 2),
             )
             weight_init.c2_msra_fill(self.csp_conv)
+        self.blocks = nn.Sequential(*self.blocks)
 
     def forward(self, x):
         if self.stride == 1:

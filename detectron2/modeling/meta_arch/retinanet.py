@@ -445,12 +445,19 @@ class RetinaNetHead(nn.Module):
         bbox_subnet = []
         for _ in range(num_convs):
             cls_subnet.append(
-                nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1)
-            )
+                nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1,
+                groups=in_channels))
             cls_subnet.append(nn.ReLU())
+            cls_subnet.append(
+                nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1))
+            cls_subnet.append(nn.ReLU())
+
             bbox_subnet.append(
-                nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1)
-            )
+                nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1, padding=1,
+                groups=in_channels))
+            bbox_subnet.append(nn.ReLU())
+            bbox_subnet.append(
+                nn.Conv2d(in_channels, in_channels, kernel_size=1, stride=1))
             bbox_subnet.append(nn.ReLU())
 
         self.cls_subnet = nn.Sequential(*cls_subnet)
