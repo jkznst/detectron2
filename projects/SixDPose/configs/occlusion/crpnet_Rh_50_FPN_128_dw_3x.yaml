@@ -15,6 +15,7 @@ MODEL:
     OUT_CHANNELS: 128
   CRPNET: 
     NUM_CONVS: 1
+    KPT_WEIGHT: 0.0
 DATASETS:
   TRAIN: ("occlusion_ape_train",)
   TEST: ("occlusion_ape_val",)
