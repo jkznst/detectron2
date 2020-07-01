@@ -395,7 +395,7 @@ class CRPNet(nn.Module):
         ) / max(1, self.loss_normalizer) / self.num_kpt * self.kpt_loss_weight
         # print(loss_cls, loss_box_reg, loss_kpt_reg)
 
-        return {"loss_cls": loss_cls, "loss_box_reg": loss_box_reg, "loss_kpt_reg": 0.0}
+        return {"loss_cls": loss_cls, "loss_box_reg": loss_box_reg, "loss_kpt_reg": loss_kpt_reg}
 
     @torch.no_grad()
     def get_ground_truth(self, anchors, targets, pred_bbox_delta):

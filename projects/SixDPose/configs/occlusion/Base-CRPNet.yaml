@@ -14,8 +14,8 @@ MODEL:
     IOU_LABELS: [0, -1, 1]
     NUM_CLASSES: 1
 DATASETS:
-  TRAIN: ("keypoints_coco_2017_train",)
-  TEST: ("keypoints_coco_2017_val",)
+  TRAIN: ("occlusion_train",)
+  TEST: ("occlusion_val",)
 SOLVER:
   IMS_PER_BATCH: 16
   BASE_LR: 0.01  # Note that RetinaNet uses a different default learning rate
@@ -23,4 +23,8 @@ SOLVER:
   MAX_ITER: 90000
 INPUT:
   MIN_SIZE_TRAIN: (640, 672, 704, 736, 768, 800)
+  # MASK_FORMAT: "bitmask"
+  KEYPOINT_FORMAT: 'bb8'   # 'bb8', 'fps8', 'bb8+fps8'
+TEST:
+  EVAL_PERIOD: 0
 VERSION: 2
