@@ -1,7 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 import math
 import numpy as np
-from typing import List
+from typing import List, Tuple
 import torch
 from fvcore.nn import sigmoid_focal_loss_jit, smooth_l1_loss
 from torch import nn
@@ -205,7 +205,7 @@ class CRPNet(nn.Module):
         # Matching and loss
         self.box2box_transform = Box2BoxTransform(weights=cfg.MODEL.CRPNET.BBOX_REG_WEIGHTS)
         self.box2kpt_transform = Box2KptTransform(weights=cfg.MODEL.CRPNET.BBOX_REG_WEIGHTS)
-        self.matcher = Matcher(
+        self.anchor_matcher = Matcher(
             cfg.MODEL.CRPNET.IOU_THRESHOLDS,
             cfg.MODEL.CRPNET.IOU_LABELS,
             allow_low_quality_matches=True,
