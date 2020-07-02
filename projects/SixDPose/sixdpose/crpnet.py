@@ -1,16 +1,16 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
-import logging
 import math
 import numpy as np
-from typing import List, Tuple
+from typing import List
 import torch
 from fvcore.nn import sigmoid_focal_loss_jit, smooth_l1_loss
 from torch import nn
+from torch.nn import functional as F
 
+from detectron2.data.detection_utils import convert_image_to_rgb
 from detectron2.layers import ShapeSpec, batched_nms, cat
 from detectron2.structures import Boxes, ImageList, Instances, pairwise_iou
 from detectron2.utils.events import get_event_storage
-from detectron2.utils.logger import log_first_n
 
 from detectron2.modeling import META_ARCH_REGISTRY, detector_postprocess, build_backbone, build_anchor_generator
 
@@ -175,9 +175,6 @@ class CRPNet(nn.Module):
 
     def __init__(self, cfg):
         super().__init__()
-
-        self.device = torch.device(cfg.MODEL.DEVICE)
-
         # fmt: off
         self.num_classes              = cfg.MODEL.CRPNET.NUM_CLASSES
         self.in_features              = cfg.MODEL.CRPNET.IN_FEATURES
@@ -214,10 +211,13 @@ class CRPNet(nn.Module):
             allow_low_quality_matches=True,
         )
 
-        pixel_mean = torch.Tensor(cfg.MODEL.PIXEL_MEAN).to(self.device).view(3, 1, 1)
-        pixel_std = torch.Tensor(cfg.MODEL.PIXEL_STD).to(self.device).view(3, 1, 1)
-        self.normalizer = lambda x: (x - pixel_mean) / pixel_std
-        self.to(self.device)
+        self.register_buffer("pixel_mean", torch.Tensor(cfg.MODEL.PIXEL_MEAN).view(-1, 1, 1))
+        self.register_buffer("pixel_std", torch.Tensor(cfg.MODEL.PIXEL_STD).view(-1, 1, 1))
+
+        # pixel_mean = torch.Tensor(cfg.MODEL.PIXEL_MEAN).to(self.device).view(3, 1, 1)
+        # pixel_std = torch.Tensor(cfg.MODEL.PIXEL_STD).to(self.device).view(3, 1, 1)
+        # self.normalizer = lambda x: (x - pixel_mean) / pixel_std
+        # self.to(self.device)
 
         """
         In Detectron1, loss is normalized by number of foreground samples in the batch.
@@ -227,6 +227,10 @@ class CRPNet(nn.Module):
         """
         self.loss_normalizer = 100  # initialize with any reasonable #fg that's not too small
         self.loss_normalizer_momentum = 0.9
+
+    @property
+    def device(self):
+        return self.pixel_mean.device
 
     def visualize_training(self, batched_inputs, results):
         """
@@ -247,11 +251,8 @@ class CRPNet(nn.Module):
         max_boxes = 20
 
         image_index = 0  # only visualize a single image
-        img = batched_inputs[image_index]["image"].cpu().numpy()
-        assert img.shape[0] == 3, "Images should have 3 channels."
-        if self.input_format == "BGR":
-            img = img[::-1, :, :]
-        img = img.transpose(1, 2, 0)
+        img = batched_inputs[image_index]["image"]
+        img = convert_image_to_rgb(img.permute(1, 2, 0), self.input_format)
         v_gt = Visualizer(img, None)
         v_gt = v_gt.overlay_instances(boxes=batched_inputs[image_index]["instances"].gt_boxes)
         anno_img = v_gt.get_image()
@@ -285,39 +286,49 @@ class CRPNet(nn.Module):
                 mapping from a named loss to a tensor storing the loss. Used during training only.
         """
         images = self.preprocess_image(batched_inputs)
-        if "instances" in batched_inputs[0]:
-            gt_instances = [x["instances"].to(self.device) for x in batched_inputs]
-        elif "targets" in batched_inputs[0]:
-            log_first_n(
-                logging.WARN, "'targets' in the model inputs is now renamed to 'instances'!", n=10
-            )
-            gt_instances = [x["targets"].to(self.device) for x in batched_inputs]
-        else:
-            gt_instances = None
+        # if "instances" in batched_inputs[0]:
+        #     gt_instances = [x["instances"].to(self.device) for x in batched_inputs]
+        # elif "targets" in batched_inputs[0]:
+        #     log_first_n(
+        #         logging.WARN, "'targets' in the model inputs is now renamed to 'instances'!", n=10
+        #     )
+        #     gt_instances = [x["targets"].to(self.device) for x in batched_inputs]
+        # else:
+        #     gt_instances = None
 
         features = self.backbone(images.tensor)
         features = [features[f] for f in self.in_features]
-        box_cls, box_delta, kpt_delta = self.head(features)
+        
         anchors = self.anchor_generator(features)
+        # box_cls, box_delta, kpt_delta = self.head(features)
+        pred_logits, pred_anchor_deltas, pred_kpt_deltas = self.head(features)
+        # Transpose the Hi*Wi*A dimension to the middle:
+        pred_logits = [permute_to_N_HWA_K(x, self.num_classes) for x in pred_logits]
+        pred_anchor_deltas = [permute_to_N_HWA_K(x, 4) for x in pred_anchor_deltas]
+        pred_kpt_deltas = [permute_to_N_HWA_K(x, self.num_kpt * 2) for x in pred_kpt_deltas]
 
         if self.training:
-            gt_classes, gt_anchors_reg_deltas, gt_kpt_reg_deltas = \
-                self.get_ground_truth(anchors, gt_instances, box_delta)
+            assert "instances" in batched_inputs[0], "Instance annotations are missing in training!"
+            gt_instances = [x["instances"].to(self.device) for x in batched_inputs]
+
+            gt_labels, gt_boxes, gt_keypoints = self.label_anchors(anchors, gt_instances)
             # print(gt_classes.size())
             # print(gt_anchors_reg_deltas.size())
             # print(gt_kpt_reg_deltas.size())
-            losses = self.losses(gt_classes, gt_anchors_reg_deltas, gt_kpt_reg_deltas,
-                 box_cls, box_delta, kpt_delta)
+            losses = self.losses(anchors, pred_logits, gt_labels, pred_anchor_deltas, gt_boxes,
+                    pred_kpt_deltas, gt_keypoints)
 
             if self.vis_period > 0:
                 storage = get_event_storage()
                 if storage.iter % self.vis_period == 0:
-                    results = self.inference(box_cls, box_delta, kpt_delta, anchors, images.image_sizes)
+                    results = self.inference(
+                        anchors, pred_logits, pred_anchor_deltas, pred_kpt_deltas, images.image_sizes
+                    )
                     self.visualize_training(batched_inputs, results)
 
             return losses
         else:
-            results = self.inference(box_cls, box_delta, kpt_delta, anchors, images.image_sizes)
+            results = self.inference(anchors, pred_logits, pred_anchor_deltas, pred_kpt_deltas, images.image_sizes)
             processed_results = []
             for results_per_image, input_per_image, image_size in zip(
                 results, batched_inputs, images.image_sizes
@@ -328,16 +339,16 @@ class CRPNet(nn.Module):
                 processed_results.append({"instances": r})
             return processed_results
 
-    def losses(self, gt_classes, gt_anchors_deltas, gt_kpt_deltas,
-             pred_class_logits, pred_anchor_deltas, pred_kpt_deltas):
+    def losses(self, anchors, pred_logits, gt_labels, pred_anchor_deltas, gt_boxes,
+            pred_kpt_deltas, gt_keypoints):
         """
         Args:
-            For `gt_classes` and `gt_anchors_deltas` parameters, see
-                :meth:`RetinaNet.get_ground_truth`.
-            Their shapes are (N, R) and (N, R, 4), respectively, where R is
-            the total number of anchors across levels, i.e. sum(Hi x Wi x A)
-            For `pred_class_logits` and `pred_anchor_deltas`, see
-                :meth:`CRPNetHead.forward`.
+            anchors (list[Boxes]): a list of #feature level Boxes
+            gt_labels, gt_boxes, gt_keypoints: see output of :meth:`CRPNet.label_anchors`.
+                Their shapes are (N, R) and (N, R, 4) and (N, R, num_kpt x 2), respectively, where R is
+                the total number of anchors across levels, i.e. sum(Hi x Wi x Ai)
+            pred_logits, pred_anchor_deltas, pred_kpt_deltas: list[Tensor], one per level. Each
+                has shape (N, Hi * Wi * Ai, K or 4 or num_kpt x 2)
 
         Returns:
             dict[str: Tensor]:
@@ -345,186 +356,256 @@ class CRPNet(nn.Module):
                 storing the loss. Used during training only. The dict keys are:
                 "loss_cls" and "loss_box_reg"
         """
-        pred_class_logits, pred_anchor_deltas, pred_kpt_deltas = permute_all_cls_and_box_to_N_HWA_K_and_concat(
-            pred_class_logits, pred_anchor_deltas, pred_kpt_deltas, self.num_classes, self.num_kpt
-        )  # Shapes: (N x R, C) and (N x R, 4) and (NxR, Kx2), respectively.
+        num_images = len(gt_labels)
+        gt_labels = torch.stack(gt_labels)  # (N, R)
+        anchors = type(anchors[0]).cat(anchors).tensor  # (R, 4)
+        gt_anchor_deltas = [self.box2box_transform.get_deltas(anchors, k) for k in gt_boxes]
+        gt_anchor_deltas = torch.stack(gt_anchor_deltas)  # (N, R, 4)
 
-        gt_classes = gt_classes.flatten()
-        gt_anchors_deltas = gt_anchors_deltas.view(-1, 4)
-        gt_kpt_deltas = gt_kpt_deltas.view(-1, self.num_kpt * 2)
+        if self.cascade_regression:
+            # predicted_boxes = self.box2box_transform.apply_deltas(pred_box_delta_per_image, anchors_per_image.tensor)
+            # TODO: test if we should use gt bbox or pred bbox
+            gt_kpt_deltas = [self.box2kpt_transform.get_deltas(b, k) for b, k in zip(gt_boxes, gt_keypoints)]
+            # print(gt_kpt_reg_deltas_i[0])
+            # test_kpt = self.box2kpt_transform.apply_deltas(
+            #     gt_kpt_reg_deltas_i, matched_gt_boxes.tensor
+            # )
+            # print(test_kpt[0])
+        else:
+            gt_kpt_deltas = [self.box2kpt_transform.get_deltas(anchors, k) for k in gt_keypoints]
+        gt_kpt_deltas = torch.stack(gt_kpt_deltas)  # (N, R, num_kpt x 2)
 
-        valid_idxs = gt_classes >= 0
-        foreground_idxs = (gt_classes >= 0) & (gt_classes != self.num_classes)
-        num_foreground = foreground_idxs.sum().item()
-        # print(num_foreground)
-        get_event_storage().put_scalar("num_foreground", num_foreground)
-        self.loss_normalizer = (
-            self.loss_normalizer_momentum * self.loss_normalizer
-            + (1 - self.loss_normalizer_momentum) * num_foreground
-        )
+        valid_mask = gt_labels >= 0
+        pos_mask = (gt_labels >= 0) & (gt_labels != self.num_classes)
+        num_pos_anchors = pos_mask.sum().item()
+        get_event_storage().put_scalar("num_pos_anchors", num_pos_anchors / num_images)
+        self.loss_normalizer = self.loss_normalizer_momentum * self.loss_normalizer + (
+            1 - self.loss_normalizer_momentum
+        ) * max(num_pos_anchors, 1)
 
-        gt_classes_target = torch.zeros_like(pred_class_logits)
-        gt_classes_target[foreground_idxs, gt_classes[foreground_idxs]] = 1
-        
-        # logits loss
+        # classification and regression loss
+        gt_labels_target = F.one_hot(gt_labels[valid_mask], num_classes=self.num_classes + 1)[
+            :, :-1
+        ]  # no loss for the last (background) class
         loss_cls = sigmoid_focal_loss_jit(
-            pred_class_logits[valid_idxs],
-            gt_classes_target[valid_idxs],
+            cat(pred_logits, dim=1)[valid_mask],
+            gt_labels_target.to(pred_logits[0].dtype),
             alpha=self.focal_loss_alpha,
             gamma=self.focal_loss_gamma,
             reduction="sum",
-        ) / max(1, self.loss_normalizer)
+        )
 
-        # regression loss
-        # print(pred_anchor_deltas.size())
-        # print(gt_anchors_deltas.size())
         loss_box_reg = smooth_l1_loss(
-            pred_anchor_deltas[foreground_idxs],
-            gt_anchors_deltas[foreground_idxs],
+            cat(pred_anchor_deltas, dim=1)[pos_mask],
+            gt_anchor_deltas[pos_mask],
             beta=self.smooth_l1_loss_beta,
             reduction="sum",
-        ) / max(1, self.loss_normalizer)
+        )
 
-        # print(pred_kpt_deltas.size())
-        # print(gt_kpt_deltas.size())
         loss_kpt_reg = smooth_l1_loss(
-            pred_kpt_deltas[foreground_idxs],
-            gt_kpt_deltas[foreground_idxs],
+            cat(pred_kpt_deltas, dim=1)[pos_mask],
+            gt_kpt_deltas[pos_mask],
             beta=self.smooth_l1_loss_beta,
             reduction="sum",
-        ) / max(1, self.loss_normalizer) / self.num_kpt * self.kpt_loss_weight
-        # print(loss_cls, loss_box_reg, loss_kpt_reg)
+        )
+        return {
+            "loss_cls": loss_cls / self.loss_normalizer,
+            "loss_box_reg": loss_box_reg / self.loss_normalizer,
+            "loss_kpt_reg": loss_kpt_reg / self.loss_normalizer / self.num_kpt * self.kpt_loss_weight,
+        }
+        # pred_class_logits, pred_anchor_deltas, pred_kpt_deltas = permute_all_cls_and_box_to_N_HWA_K_and_concat(
+        #     pred_class_logits, pred_anchor_deltas, pred_kpt_deltas, self.num_classes, self.num_kpt
+        # )  # Shapes: (N x R, C) and (N x R, 4) and (NxR, Kx2), respectively.
 
-        return {"loss_cls": loss_cls, "loss_box_reg": loss_box_reg, "loss_kpt_reg": loss_kpt_reg}
+        # gt_classes = gt_classes.flatten()
+        # gt_anchors_deltas = gt_anchors_deltas.view(-1, 4)
+        # gt_kpt_deltas = gt_kpt_deltas.view(-1, self.num_kpt * 2)
+
+        # valid_idxs = gt_classes >= 0
+        # foreground_idxs = (gt_classes >= 0) & (gt_classes != self.num_classes)
+        # num_foreground = foreground_idxs.sum().item()
+        # # print(num_foreground)
+        # get_event_storage().put_scalar("num_foreground", num_foreground)
+        # self.loss_normalizer = (
+        #     self.loss_normalizer_momentum * self.loss_normalizer
+        #     + (1 - self.loss_normalizer_momentum) * num_foreground
+        # )
+
+        # gt_classes_target = torch.zeros_like(pred_class_logits)
+        # gt_classes_target[foreground_idxs, gt_classes[foreground_idxs]] = 1
+        
+        # # logits loss
+        # loss_cls = sigmoid_focal_loss_jit(
+        #     pred_class_logits[valid_idxs],
+        #     gt_classes_target[valid_idxs],
+        #     alpha=self.focal_loss_alpha,
+        #     gamma=self.focal_loss_gamma,
+        #     reduction="sum",
+        # ) / max(1, self.loss_normalizer)
+
+        # # regression loss
+        # # print(pred_anchor_deltas.size())
+        # # print(gt_anchors_deltas.size())
+        # loss_box_reg = smooth_l1_loss(
+        #     pred_anchor_deltas[foreground_idxs],
+        #     gt_anchors_deltas[foreground_idxs],
+        #     beta=self.smooth_l1_loss_beta,
+        #     reduction="sum",
+        # ) / max(1, self.loss_normalizer)
+
+        # # print(pred_kpt_deltas.size())
+        # # print(gt_kpt_deltas.size())
+        # loss_kpt_reg = smooth_l1_loss(
+        #     pred_kpt_deltas[foreground_idxs],
+        #     gt_kpt_deltas[foreground_idxs],
+        #     beta=self.smooth_l1_loss_beta,
+        #     reduction="sum",
+        # ) / max(1, self.loss_normalizer) / self.num_kpt * self.kpt_loss_weight
+        # # print(loss_cls, loss_box_reg, loss_kpt_reg)
+
+        # return {"loss_cls": loss_cls, "loss_box_reg": loss_box_reg, "loss_kpt_reg": loss_kpt_reg}
 
     @torch.no_grad()
-    def get_ground_truth(self, anchors, targets, pred_bbox_delta):
+    def label_anchors(self, anchors, gt_instances):
         """
         Args:
-            anchors (list[list[Boxes]]): a list of N=#image elements. Each is a
-                list of #feature level Boxes. The Boxes contains anchors of
-                this image on the specific feature level.
-            targets (list[Instances]): a list of N `Instances`s. The i-th
+            anchors (list[Boxes]): A list of #feature level Boxes.
+                The Boxes contains anchors of this image on the specific feature level.
+            gt_instances (list[Instances]): a list of N `Instances`s. The i-th
                 `Instances` contains the ground-truth per-instance annotations
-                for the i-th input image.  Specify `targets` during training only.
+                for the i-th input image.
 
         Returns:
-            gt_classes (Tensor):
-                An integer tensor of shape (N, R) storing ground-truth
-                labels for each anchor.
-                R is the total number of anchors, i.e. the sum of Hi x Wi x A for all levels.
-                Anchors with an IoU with some target higher than the foreground threshold
-                are assigned their corresponding label in the [0, C-1] range.
-                Anchors whose IoU are below the background threshold are assigned
-                the label "C". Anchors whose IoU are between the foreground and background
-                thresholds are assigned a label "-1", i.e. ignore.
-            gt_anchors_deltas (Tensor):
-                Shape (N, R, 4).
-                The last dimension represents ground-truth box2box transform
-                targets (dx, dy, dw, dh) that map each anchor to its matched ground-truth box.
-                The values in the tensor are meaningful only when the corresponding
-                anchor is labeled as foreground.
-            gt_anchors_kpt_deltas (Tensor):
-                Shape (N, R, Kx2).
-                The last dimension represents ground-truth box2kpt transform
-                targets (dx, dy) that map each anchor to its matched ground-truth keypoint.
-                The values in the tensor are meaningful only when the corresponding
-                anchor is labeled as foreground.
+            gt_labels: list[Tensor]:
+                List of #img tensors. i-th element is a vector of labels whose length is
+                the total number of anchors across all feature maps (sum(Hi * Wi * A)).
+                Label values are in {-1, 0, ..., K}, with -1 means ignore, and K means background.
+            matched_gt_boxes (list[Tensor]):
+                i-th element is a Rx4 tensor, where R is the total number of anchors across
+                feature maps. The values are the matched gt boxes for each anchor.
+                Values are undefined for those anchors not labeled as foreground.
+            matched_gt_kpts (list[Tensor]):
+                i-th element is a Rx(num_kptx2) tensor, where R is the total number of anchors across
+                feature maps. The values are the matched gt keypoints for each anchor.
+                Values are undefined for those anchors not labeled as foreground.
         """
-        gt_classes = []
-        gt_anchors_deltas = []
-        gt_kpt_deltas = []
-        anchors = [Boxes.cat(anchors_i) for anchors_i in anchors]
-        # list[Tensor(R, 4)], one for each image
+        anchors = Boxes.cat(anchors)  # Rx4
+        
+        gt_labels = []
+        matched_gt_boxes = []
+        matched_gt_kpts = []
+        for gt_per_image in gt_instances:
+            match_quality_matrix = pairwise_iou(gt_per_image.gt_boxes, anchors)
+            matched_idxs, anchor_labels = self.anchor_matcher(match_quality_matrix)
+            del match_quality_matrix
 
-        pred_bbox_delta = [permute_to_N_HWA_K(x, 4) for x in pred_bbox_delta]
+            if len(gt_per_image) > 0:
+                matched_gt_boxes_i = gt_per_image.gt_boxes.tensor[matched_idxs]
+                matched_gt_kpts_i = gt_per_image.gt_keypoints.tensor[matched_idxs]
 
-        for img_idx, (anchors_per_image, targets_per_image) in enumerate(zip(anchors, targets)):
-            match_quality_matrix = pairwise_iou(targets_per_image.gt_boxes, anchors_per_image)
-            gt_matched_idxs, anchor_labels = self.matcher(match_quality_matrix)
-            # print(gt_matched_idxs.size())
-            # print(gt_matched_idxs[0:10])
-            # print(anchor_labels[0:10])
-            # print(targets_per_image)
-
-            pred_box_delta_per_image = [box_reg_per_level[img_idx] for box_reg_per_level in pred_bbox_delta]
-            pred_box_delta_per_image = Boxes.cat(pred_box_delta_per_image)  # Tensor(R, 4), R=A*(H1*W1 + H2*W2 + ...)
-
-            has_gt = len(targets_per_image) > 0
-            if has_gt:
-                # ground truth box regression
-                matched_gt_boxes = targets_per_image.gt_boxes[gt_matched_idxs]
-                gt_anchors_reg_deltas_i = self.box2box_transform.get_deltas(
-                    anchors_per_image.tensor, matched_gt_boxes.tensor
-                )
-
-                # ground truth keypoint regression
-                matched_gt_kpts = targets_per_image.gt_keypoints[gt_matched_idxs]
-                # print(matched_gt_kpts.tensor[0])
-                if self.cascade_regression:
-                    predicted_boxes = self.box2box_transform.apply_deltas(pred_box_delta_per_image, anchors_per_image.tensor)
-                    # TODO: test if we should use gt bbox or pred bbox
-                    gt_kpt_reg_deltas_i = self.box2kpt_transform.get_deltas(
-                        matched_gt_boxes.tensor, matched_gt_kpts.tensor
-                    )
-                    # print(gt_kpt_reg_deltas_i[0])
-                    # test_kpt = self.box2kpt_transform.apply_deltas(
-                    #     gt_kpt_reg_deltas_i, matched_gt_boxes.tensor
-                    # )
-                    # print(test_kpt[0])
-                else:
-                    gt_kpt_reg_deltas_i = self.box2kpt_transform.get_deltas(
-                        anchors_per_image.tensor, matched_gt_kpts.tensor
-                    )
-
-                gt_classes_i = targets_per_image.gt_classes[gt_matched_idxs]
+                gt_labels_i = gt_per_image.gt_classes[matched_idxs]
                 # Anchors with label 0 are treated as background.
-                gt_classes_i[anchor_labels == 0] = self.num_classes
+                gt_labels_i[anchor_labels == 0] = self.num_classes
                 # Anchors with label -1 are ignored.
-                gt_classes_i[anchor_labels == -1] = -1
+                gt_labels_i[anchor_labels == -1] = -1
             else:
-                gt_classes_i = torch.zeros_like(gt_matched_idxs) + self.num_classes
-                gt_anchors_reg_deltas_i = torch.zeros_like(anchors_per_image.tensor)
-                gt_kpt_reg_deltas_i = torch.zeros(anchors_per_image.tensor.size(0), self.num_kpt * 2)
+                matched_gt_boxes_i = torch.zeros_like(anchors.tensor)
+                matched_gt_kpts_i = torch.zeros(anchors.tensor.size(0), self.num_kpt * 2)
+                gt_labels_i = torch.zeros_like(matched_idxs) + self.num_classes
 
-            gt_classes.append(gt_classes_i)
-            gt_anchors_deltas.append(gt_anchors_reg_deltas_i)
-            gt_kpt_deltas.append(gt_kpt_reg_deltas_i)
+            gt_labels.append(gt_labels_i)
+            matched_gt_boxes.append(matched_gt_boxes_i)
+            matched_gt_kpts.append(matched_gt_kpts_i)
 
-        return torch.stack(gt_classes), torch.stack(gt_anchors_deltas), torch.stack(gt_kpt_deltas)
+        return gt_labels, matched_gt_boxes, matched_gt_kpts
+        # for img_idx, (anchors_per_image, targets_per_image) in enumerate(zip(anchors, targets)):
+            
+        #     has_gt = len(targets_per_image) > 0
+        #     if has_gt:
+        #         # ground truth box regression
+        #         matched_gt_boxes = targets_per_image.gt_boxes[gt_matched_idxs]
+        #         gt_anchors_reg_deltas_i = self.box2box_transform.get_deltas(
+        #             anchors_per_image.tensor, matched_gt_boxes.tensor
+        #         )
 
-    def inference(self, box_cls, box_delta, kpt_delta, anchors, image_sizes):
+        #         # ground truth keypoint regression
+        #         matched_gt_kpts = targets_per_image.gt_keypoints[gt_matched_idxs]
+        #         # print(matched_gt_kpts.tensor[0])
+        #         if self.cascade_regression:
+        #             predicted_boxes = self.box2box_transform.apply_deltas(pred_box_delta_per_image, anchors_per_image.tensor)
+        #             # TODO: test if we should use gt bbox or pred bbox
+        #             gt_kpt_reg_deltas_i = self.box2kpt_transform.get_deltas(
+        #                 matched_gt_boxes.tensor, matched_gt_kpts.tensor
+        #             )
+        #             # print(gt_kpt_reg_deltas_i[0])
+        #             # test_kpt = self.box2kpt_transform.apply_deltas(
+        #             #     gt_kpt_reg_deltas_i, matched_gt_boxes.tensor
+        #             # )
+        #             # print(test_kpt[0])
+        #         else:
+        #             gt_kpt_reg_deltas_i = self.box2kpt_transform.get_deltas(
+        #                 anchors_per_image.tensor, matched_gt_kpts.tensor
+        #             )
+
+        #         gt_classes_i = targets_per_image.gt_classes[gt_matched_idxs]
+        #         # Anchors with label 0 are treated as background.
+        #         gt_classes_i[anchor_labels == 0] = self.num_classes
+        #         # Anchors with label -1 are ignored.
+        #         gt_classes_i[anchor_labels == -1] = -1
+        #     else:
+        #         gt_classes_i = torch.zeros_like(gt_matched_idxs) + self.num_classes
+        #         gt_anchors_reg_deltas_i = torch.zeros_like(anchors_per_image.tensor)
+        #         gt_kpt_reg_deltas_i = torch.zeros(anchors_per_image.tensor.size(0), self.num_kpt * 2)
+
+        #     gt_classes.append(gt_classes_i)
+        #     gt_anchors_deltas.append(gt_anchors_reg_deltas_i)
+        #     gt_kpt_deltas.append(gt_kpt_reg_deltas_i)
+
+        # return torch.stack(gt_classes), torch.stack(gt_anchors_deltas), torch.stack(gt_kpt_deltas)
+
+    def inference(self, anchors, pred_logits, pred_anchor_deltas, pred_kpt_deltas, image_sizes):
         """
         Arguments:
-            box_cls, box_delta: Same as the output of :meth:`CRPNetHead.forward`
-            anchors (list[list[Boxes]]): a list of #images elements. Each is a
-                list of #feature level Boxes. The Boxes contain anchors of this
-                image on the specific feature level.
+            anchors (list[Boxes]): A list of #feature level Boxes.
+                The Boxes contain anchors of this image on the specific feature level.
+            pred_logits, pred_anchor_deltas: list[Tensor], one per level. Each
+                has shape (N, Hi * Wi * Ai, K or 4)
             image_sizes (List[torch.Size]): the input image sizes
 
         Returns:
             results (List[Instances]): a list of #images elements.
         """
-        assert len(anchors) == len(image_sizes)
         results = []
-
-        box_cls = [permute_to_N_HWA_K(x, self.num_classes) for x in box_cls]
-        box_delta = [permute_to_N_HWA_K(x, 4) for x in box_delta]
-        kpt_delta = [permute_to_N_HWA_K(x, self.num_kpt * 2) for x in kpt_delta]
-        # list[Tensor], one per level, each has shape (N, Hi x Wi x A, K or 4)
-
-        for img_idx, anchors_per_image in enumerate(anchors):
-            image_size = image_sizes[img_idx]
-            box_cls_per_image = [box_cls_per_level[img_idx] for box_cls_per_level in box_cls]
-            box_reg_per_image = [box_reg_per_level[img_idx] for box_reg_per_level in box_delta]
-            kpt_reg_per_image = [kpt_reg_per_level[img_idx] for kpt_reg_per_level in kpt_delta]
+        for img_idx, image_size in enumerate(image_sizes):
+            pred_logits_per_image = [x[img_idx] for x in pred_logits]
+            bbox_deltas_per_image = [x[img_idx] for x in pred_anchor_deltas]
+            kpt_deltas_per_image = [x[img_idx] for x in pred_kpt_deltas]
             results_per_image = self.inference_single_image(
-                box_cls_per_image, box_reg_per_image, kpt_reg_per_image, anchors_per_image, tuple(image_size)
+                anchors, pred_logits_per_image, bbox_deltas_per_image, 
+                kpt_deltas_per_image, tuple(image_size)
             )
             results.append(results_per_image)
         return results
+        # assert len(anchors) == len(image_sizes)
+        # results = []
 
-    def inference_single_image(self, box_cls, box_delta, kpt_delta, anchors, image_size):
+        # box_cls = [permute_to_N_HWA_K(x, self.num_classes) for x in box_cls]
+        # box_delta = [permute_to_N_HWA_K(x, 4) for x in box_delta]
+        # kpt_delta = [permute_to_N_HWA_K(x, self.num_kpt * 2) for x in kpt_delta]
+        # # list[Tensor], one per level, each has shape (N, Hi x Wi x A, K or 4)
+
+        # for img_idx, anchors_per_image in enumerate(anchors):
+        #     image_size = image_sizes[img_idx]
+        #     box_cls_per_image = [box_cls_per_level[img_idx] for box_cls_per_level in box_cls]
+        #     box_reg_per_image = [box_reg_per_level[img_idx] for box_reg_per_level in box_delta]
+        #     kpt_reg_per_image = [kpt_reg_per_level[img_idx] for kpt_reg_per_level in kpt_delta]
+        #     results_per_image = self.inference_single_image(
+        #         box_cls_per_image, box_reg_per_image, kpt_reg_per_image, anchors_per_image, tuple(image_size)
+        #     )
+        #     results.append(results_per_image)
+        # return results
+
+    def inference_single_image(self, anchors, box_cls, box_delta, kpt_delta, image_size):
         """
         Single-image inference. Return bounding-box detection results by thresholding
         on scores and applying non-maximum suppression (NMS).
@@ -600,7 +681,7 @@ class CRPNet(nn.Module):
         Normalize, pad and batch the input images.
         """
         images = [x["image"].to(self.device) for x in batched_inputs]
-        images = [self.normalizer(x) for x in images]
+        images = [(x - self.pixel_mean) / self.pixel_std for x in images]
         images = ImageList.from_tensors(images, self.backbone.size_divisibility)
         return images
 
