@@ -224,7 +224,7 @@ class DatasetMapper:
         self.img_format     = cfg.INPUT.FORMAT
         self.mask_on        = cfg.MODEL.MASK_ON or cfg.MODEL.PVNET_ON
         self.mask_format    = cfg.INPUT.MASK_FORMAT
-        self.keypoint_on    = cfg.MODEL.KEYPOINT_ON or cfg.MODEL.PVNET_ON
+        self.keypoint_on    = cfg.MODEL.KEYPOINT_ON or cfg.MODEL.PVNET_ON or cfg.MODEL.CRPNET_ON or cfg.MODEL.HCR_ON
         self.keypoint_format= cfg.INPUT.KEYPOINT_FORMAT
         self.load_proposals = cfg.MODEL.LOAD_PROPOSALS
         # fmt: on

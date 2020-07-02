@@ -61,19 +61,18 @@ def add_sixdpose_config(cfg):
     # Types for fusing the FPG top-down and lateral features. Can be either "sum" or "avg"
     _C.MODEL.FPG.FUSE_TYPE = "sum"
 
-    # test coco
-    # _C.INPUT.KEYPOINT_FORMAT = 'bb8+fps8'   # 'bb8', 'fps8', 'bb8+fps8'
-
-    # # `True` if random blur is used for data augmentation during training
-    # _C.INPUT.RANDOMBLUR = CN({"ENABLED": True})
-    # _C.INPUT.RANDOMBLUR.PROB = 0.5
-
-    # # `True` if color jitter is used for data augmentation during training
-    # _C.INPUT.COLORJITTER = CN({"ENABLED": True})
-    # _C.INPUT.COLORJITTER.BRIGHTNESS = 0.1
-    # _C.INPUT.COLORJITTER.CONTRAST = 0.1
-    # _C.INPUT.COLORJITTER.SATURATION = 0.05
-    # _C.INPUT.COLORJITTER.HUE = 0.05
+    # comment when train on coco ---------------------------------------------
+    _C.INPUT.KEYPOINT_FORMAT = 'bb8+fps8'   # 'bb8', 'fps8', 'bb8+fps8'
+    # `True` if random blur is used for data augmentation during training
+    _C.INPUT.RANDOMBLUR = CN({"ENABLED": True})
+    _C.INPUT.RANDOMBLUR.PROB = 0.5
+    # `True` if color jitter is used for data augmentation during training
+    _C.INPUT.COLORJITTER = CN({"ENABLED": True})
+    _C.INPUT.COLORJITTER.BRIGHTNESS = 0.1
+    _C.INPUT.COLORJITTER.CONTRAST = 0.1
+    _C.INPUT.COLORJITTER.SATURATION = 0.05
+    _C.INPUT.COLORJITTER.HUE = 0.05
+    # -------------------------------------------------------------------------
 
     # ---------------------------------------------------------------------------- #
     # ResNeth options
@@ -131,7 +130,7 @@ def add_sixdpose_config(cfg):
 
     # Convolutions to use in the cls and bbox tower
     # NOTE: this doesn't include the last conv for logits
-    _C.MODEL.CRPNET.NUM_CONVS = 0
+    _C.MODEL.CRPNET.NUM_CONVS = 1
     _C.MODEL.CRPNET.NUM_KEYPOINTS = 17 # test coco
 
     # IoU overlap ratio [bg, fg] for labeling anchors.

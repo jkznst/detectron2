@@ -18,11 +18,13 @@ from detectron2.engine import DefaultTrainer, default_argument_parser, default_s
 from detectron2.evaluation import DatasetEvaluators, verify_results
 from detectron2.utils.logger import setup_logger
 
-# test coco
-# from sixdpose import DatasetMapper, add_sixdpose_config, COCOEvaluator, SixDPoseEvaluator
-# from detectron2.data import DatasetMapper
-from detectron2.evaluation import COCOEvaluator
-from sixdpose import add_sixdpose_config, COCODatasetMapper
+# train on linemod
+from sixdpose import DatasetMapper, add_sixdpose_config, COCOEvaluator, SixDPoseEvaluator
+
+# train on coco
+# from detectron2.evaluation import COCOEvaluator
+# from sixdpose import add_sixdpose_config
+# from sixdpose import COCODatasetMapper as DatasetMapper
 
 class Trainer(DefaultTrainer):
     @classmethod
@@ -35,11 +37,11 @@ class Trainer(DefaultTrainer):
 
     @classmethod
     def build_test_loader(cls, cfg, dataset_name):
-        return build_detection_test_loader(cfg, dataset_name, mapper=COCODatasetMapper(cfg, False))
+        return build_detection_test_loader(cfg, dataset_name, mapper=DatasetMapper(cfg, False))
 
     @classmethod
     def build_train_loader(cls, cfg):
-        return build_detection_train_loader(cfg, mapper=COCODatasetMapper(cfg, True))
+        return build_detection_train_loader(cfg, mapper=DatasetMapper(cfg, True))
 
     # def resume_or_load(self, resume=True):
     #     """
@@ -96,7 +98,7 @@ def main(args):
 
     trainer = Trainer(cfg)
     trainer.resume_or_load(resume=args.resume)
-    trainer.export(name="retinanet_Rh_50_FPN_128_dw_6x")
+    # trainer.export(name="retinanet_Rh_50_FPN_128_dw_6x")
     return trainer.train()
 
 
