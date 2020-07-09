@@ -350,10 +350,11 @@ class CRPNet(nn.Module):
         gt_anchor_deltas = torch.stack(gt_anchor_deltas)  # (N, R, 4)
 
         if self.cascade_regression:
-            # predicted_boxes = [self.box2box_transform.apply_deltas(d, anchors) for d in cat(pred_anchor_deltas, dim=1)]
-            # predicted_boxes = torch.stack(predicted_boxes)
+            predicted_boxes = [self.box2box_transform.apply_deltas(d, anchors) for d in cat(pred_anchor_deltas, dim=1)]
+            predicted_boxes = torch.stack(predicted_boxes)
             # TODO: test if we should use gt bbox or pred bbox
-            gt_kpt_deltas = [self.box2kpt_transform.get_deltas(b, k) for b, k in zip(gt_boxes, gt_keypoints)]
+            # gt_kpt_deltas = [self.box2kpt_transform.get_deltas(b, k) for b, k in zip(gt_boxes, gt_keypoints)]
+            gt_kpt_deltas = [self.box2kpt_transform.get_deltas(b, k) for b, k in zip(predicted_boxes, gt_keypoints)]
             # print(gt_kpt_reg_deltas_i[0])
             # test_kpt = self.box2kpt_transform.apply_deltas(
             #     gt_kpt_reg_deltas_i, matched_gt_boxes.tensor

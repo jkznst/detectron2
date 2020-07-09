@@ -1,7 +1,8 @@
 _BASE_: "./Base-CRPNet.yaml"
 MODEL:
   # WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
-  WEIGHTS: "models/retinanet_Rh_50_FPN_128_dw_6x.pth"
+  # WEIGHTS: "models/retinanet_Rh_50_FPN_128_dw_6x.pth"
+  WEIGHTS: "output/sixdpose/occlusion/ape/crpnet_Rh_50_FPN_128_dw_res5d_1x/crpnet_Rh_50_FPN_128_dw_res5d_det_1x.pth"
   BACKBONE:
     NAME: "build_crpnet_resneth_fpn_backbone"
   RESNETH:
@@ -15,19 +16,19 @@ MODEL:
     OUT_CHANNELS: 128
   CRPNET: 
     NUM_CONVS: 1
-    KPT_WEIGHT: 0.0
+    KPT_WEIGHT: 3.0
 DATASETS:
   TRAIN: ("occlusion_ape_train",)
   TEST: ("occlusion_ape_val",)
-SOLVER: # for single GPUs
-  IMS_PER_BATCH: 2
-  BASE_LR: 0.00125  # original 0.00125
-  STEPS: (1440000, 1920000)
-  MAX_ITER: 2160000
-  CHECKPOINT_PERIOD: 240000
+SOLVER: # for 2 GPUs
+  IMS_PER_BATCH: 4
+  BASE_LR: 0.0025  # original 0.00125
+  STEPS: (240000, 320000)
+  MAX_ITER: 360000
+  CHECKPOINT_PERIOD: 40000
 INPUT:
   MIN_SIZE_TRAIN: (320, 352, 384, 416, 448, 480)
   MAX_SIZE_TRAIN: 800
   MIN_SIZE_TEST: 416
   MAX_SIZE_TEST: 800
-OUTPUT_DIR: "./output/sixdpose/occlusion/ape/crpnet_Rh_50_FPN_128_dw_3x_res5d"
+OUTPUT_DIR: "./output/sixdpose/occlusion/ape/crpnet_Rh_50_FPN_128_dw_res5d_1x"

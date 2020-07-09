@@ -31,8 +31,8 @@ class Trainer(DefaultTrainer):
     def build_evaluator(cls, cfg, dataset_name):
         output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
         evaluators = [COCOEvaluator(dataset_name, cfg, True, output_folder)]
-        # if True:
-        #     evaluators.append(SixDPoseEvaluator(dataset_name, cfg, True, output_folder))
+        if True:
+            evaluators.append(SixDPoseEvaluator(dataset_name, cfg, True, output_folder))
         return DatasetEvaluators(evaluators)
 
     @classmethod
@@ -98,7 +98,7 @@ def main(args):
 
     trainer = Trainer(cfg)
     trainer.resume_or_load(resume=args.resume)
-    # trainer.export(name="retinanet_Rh_50_FPN_128_dw_6x")
+    # trainer.export(name="crpnet_Rh_50_FPN_128_dw_res45d_det_1x")
     return trainer.train()
 
 
