@@ -100,6 +100,8 @@ class Box2KptTransform(object):
         assert isinstance(target_kpts, torch.Tensor), type(target_kpts)
         # print(src_boxes[0:10])
         # print(target_kpts[0:10])
+        # print(src_boxes.device)
+        # print(target_kpts.device)
 
         src_widths = src_boxes[:, 2] - src_boxes[:, 0]
         src_heights = src_boxes[:, 3] - src_boxes[:, 1]
@@ -116,6 +118,8 @@ class Box2KptTransform(object):
         # print(target_kpt_x[0])
         # print(src_ctr_x[0])
         # print(src_widths[0])
+        # print(target_kpt_x.shape)
+        # print(src_ctr_x.shape)
         dx = wx * (target_kpt_x - src_ctr_x[:, None]) / src_widths[:, None]
         dy = wy * (target_kpt_y - src_ctr_y[:, None]) / src_heights[:, None]
         # dw = ww * torch.log(target_widths / src_widths)
@@ -448,7 +452,7 @@ class CRPNet(nn.Module):
                 gt_labels_i[anchor_labels == -1] = -1
             else:
                 matched_gt_boxes_i = torch.zeros_like(anchors.tensor)
-                matched_gt_kpts_i = torch.zeros(anchors.tensor.size(0), self.num_kpt * 2)
+                matched_gt_kpts_i = torch.zeros((anchors.tensor.size(0), self.num_kpt, 3), device=matched_gt_boxes_i.device)
                 gt_labels_i = torch.zeros_like(matched_idxs) + self.num_classes
 
             gt_labels.append(gt_labels_i)
