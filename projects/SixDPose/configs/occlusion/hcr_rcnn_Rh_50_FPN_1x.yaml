@@ -1,16 +1,8 @@
 _BASE_: "Base-HCR-RCNN-FPN.yaml"
 MODEL:
   WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
-  BACKBONE:
-    NAME: "build_crpnet_resneth_fpn_backbone"
   RESNETH:
     DEPTH: 50
-    FREEZE_AT: 2
-    OUT_FEATURES: ["res3", "res4", "res5"]
-    DILATION_ON_PER_STAGE: [False, False, False, True]
-  ANCHOR_GENERATOR:
-    SIZES: [[16], [32], [64], [128], [256]]  # One size for each in feature map
-    ASPECT_RATIOS: [[0.5, 1.0, 2.0]]  # Three aspect ratios (same for all in feature maps)
   ROI_HCR_HEAD:
     OFFSET_WEIGHTS: 1.0
   # KEYPOINT_ON: True
@@ -26,4 +18,7 @@ SOLVER: # for single GPUs
   STEPS: (480000, 640000)
   MAX_ITER: 720000
   CHECKPOINT_PERIOD: 20000
-OUTPUT_DIR: "./output/sixdpose/coco/hcr_rcnn_Rh_50_FPN_1x"
+DATASETS:
+  TRAIN: ("occlusion_ape_train",)
+  TEST: ("occlusion_ape_val",)
+OUTPUT_DIR: "./output/sixdpose/occlusion/ape/hcr_rcnn_Rh_50_FPN_1x"
