@@ -98,7 +98,7 @@ def main(args):
 
     trainer = Trainer(cfg)
     trainer.resume_or_load(resume=args.resume)
-    # trainer.export(name="crpnet_Rh_50_FPN_128_dw_res45d_det_1x")
+    # trainer.export(name="crpnet_Rh_50_FPN_128_dw_res5d_det_1x")
     return trainer.train()
 
 
