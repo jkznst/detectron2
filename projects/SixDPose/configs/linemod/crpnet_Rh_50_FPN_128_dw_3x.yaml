@@ -2,7 +2,6 @@ _BASE_: "./Base-CRPNet.yaml"
 MODEL:
   # WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
   WEIGHTS: "models/retinanet_Rh_50_FPN_128_dw_6x.pth"
-  # WEIGHTS: "output/sixdpose/occlusion/holepuncher/crpnet_Rh_50_FPN_128_dw_res5d_1x/crpnet_Rh_50_FPN_128_dw_res5d_det_1x.pth"
   BACKBONE:
     NAME: "build_crpnet_resneth_fpn_backbone"
   RESNETH:
@@ -18,7 +17,7 @@ MODEL:
     NUM_CONVS: 1
     KPT_WEIGHT: 1.0
 DATASETS:
-  TRAIN: ("linemod_benchvise_train",) #("occlusion_holepuncher_train",)
+  TRAIN: ("linemod_benchvise_train",)
   TEST: ("linemod_benchvise_val",)
 SOLVER: # for 2 GPUs
   IMS_PER_BATCH: 4

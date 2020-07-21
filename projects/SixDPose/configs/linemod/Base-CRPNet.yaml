@@ -23,8 +23,8 @@ MODEL:
     TOPK_CANDIDATES_TEST: 1000
     NMS_THRESH_TEST: 0.5
 DATASETS:
-  TRAIN: ("occlusion_train",)
-  TEST: ("occlusion_val",)
+  TRAIN: ("linemod_ape_train",)
+  TEST: ("linemod_ape_val",)
 SOLVER:
   IMS_PER_BATCH: 16
   BASE_LR: 0.01  # Note that RetinaNet uses a different default learning rate
