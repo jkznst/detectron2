@@ -782,6 +782,19 @@ def build_cspresneth_backbone(cfg, input_shape):
         stages.append(csp_stage)
     return CSPResNet(stem, stages, out_features=out_features)
 
+class LastLevelMaxPool(nn.Module):
+    """
+    This module is used in the original FPN to generate a downsampled
+    P6 feature from P5.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.num_levels = 1
+        self.in_feature = "p5"
+
+    def forward(self, x):
+        return [F.max_pool2d(x, kernel_size=1, stride=2, padding=0)]
 
 class LastLevelP6P7(nn.Module):
     """
@@ -1268,3 +1281,24 @@ def build_crpnet_resnet_fpn_backbone(cfg, input_shape: ShapeSpec):
     )
     return backbone
 
+@BACKBONE_REGISTRY.register()
+def build_hcrnet_resneth_fpn_backbone(cfg, input_shape: ShapeSpec):
+    """
+    Args:
+        cfg: a detectron2 CfgNode
+
+    Returns:
+        backbone (Backbone): backbone module, must be a subclass of :class:`Backbone`.
+    """
+    bottom_up = build_resneth_backbone(cfg, input_shape)
+    in_features = cfg.MODEL.FPN.IN_FEATURES
+    out_channels = cfg.MODEL.FPN.OUT_CHANNELS
+    backbone = FPN_resneth(
+        bottom_up=bottom_up,
+        in_features=in_features,
+        out_channels=out_channels,
+        norm=cfg.MODEL.FPN.NORM,
+        top_block=LastLevelMaxPool(),
+        fuse_type=cfg.MODEL.FPN.FUSE_TYPE,
+    )
+    return backbone
