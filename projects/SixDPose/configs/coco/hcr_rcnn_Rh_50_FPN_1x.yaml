@@ -1,6 +1,7 @@
 _BASE_: "Base-HCR-RCNN-FPN.yaml"
 MODEL:
-  WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+  # WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+  WEIGHTS: "models/retinanet_Rh_50_FPN_128_dw_6x.pth"
   RESNETH:
     DEPTH: 50
   # ROI_HCR_HEAD:

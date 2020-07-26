@@ -4,10 +4,13 @@ MODEL:
   BACKBONE:
     NAME: "build_hcrnet_resneth_fpn_backbone"
   RESNETH:
+    DEPTH: 50
+    FREEZE_AT: 1
     OUT_FEATURES: ["res2", "res3", "res4", "res5"]
     DILATION_ON_PER_STAGE: [False, False, False, False]
   FPN:
     IN_FEATURES: ["res2", "res3", "res4", "res5"]
+    OUT_CHANNELS: 128
   ANCHOR_GENERATOR:
     SIZES: [[16], [32], [64], [128], [256]]  # One size for each in feature map
     ASPECT_RATIOS: [[0.5, 1.0, 2.0]]  # Three aspect ratios (same for all in feature maps)
