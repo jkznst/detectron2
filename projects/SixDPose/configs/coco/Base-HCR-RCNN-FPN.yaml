@@ -6,6 +6,7 @@ MODEL:
   RESNETH:
     DEPTH: 50
     FREEZE_AT: 1
+    STRIDE_IN_1X1: False
     OUT_FEATURES: ["res2", "res3", "res4", "res5"]
     DILATION_ON_PER_STAGE: [False, False, False, False]
   FPN:

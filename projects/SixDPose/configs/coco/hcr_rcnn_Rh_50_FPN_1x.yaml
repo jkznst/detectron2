@@ -1,7 +1,7 @@
 _BASE_: "Base-HCR-RCNN-FPN.yaml"
 MODEL:
-  # WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
-  WEIGHTS: "models/retinanet_Rh_50_FPN_128_dw_6x.pth"
+  WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+  # WEIGHTS: "models/retinanet_Rh_50_FPN_128_dw_6x.pth"
   RESNETH:
     DEPTH: 50
   # ROI_HCR_HEAD:
@@ -16,10 +16,10 @@ INPUT:
 SOLVER: # for two GPUs
   IMS_PER_BATCH: 4
   BASE_LR: 0.005
-  STEPS: (720000, 960000)
-  MAX_ITER: 1080000
-  CHECKPOINT_PERIOD: 120000
+  STEPS: (1440000, 1920000)
+  MAX_ITER: 2160000
+  CHECKPOINT_PERIOD: 60000
 # DATASETS:
 #   TRAIN: ("occlusion_ape_train",)
 #   TEST: ("occlusion_ape_val",)
-OUTPUT_DIR: "./output/sixdpose/coco/hcr_rcnn_Rh_50_FPN_3x"
+OUTPUT_DIR: "./output/sixdpose/coco/hcr_rcnn_Rh_50_FPN_6x"
