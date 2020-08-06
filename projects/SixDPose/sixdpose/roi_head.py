@@ -27,6 +27,8 @@ from .hcr_head import (
     hcr_inference,
 )
 
+from .resneth import BottleneckBlock
+
 class Decoder(nn.Module):
     """
     A semantic segmentation head described in detail in the Panoptic Feature Pyramid Networks paper
@@ -83,6 +85,109 @@ class Decoder(nn.Module):
                 x = x + self.scale_heads[i](features[i])
         x = self.predictor(x)
         return x
+
+class FeatureTransitionModule(nn.Module):
+    def __init__(self, cfg, input_shape: Dict[str, ShapeSpec], in_features):
+        super(FeatureTransitionModule, self).__init__()
+
+        # fmt: off
+        self.in_features      = in_features
+        feature_strides       = {k: v.stride for k, v in input_shape.items()}
+        feature_channels      = {k: v.channels for k, v in input_shape.items()}
+        # self.common_stride    = cfg.MODEL.ROI_HCR_HEAD.DECODER_COMMON_STRIDE
+        norm                  = cfg.MODEL.ROI_HCR_HEAD.TRANSITION_NORM
+        # fmt: on
+
+        self.transitions = []
+        for in_feature in self.in_features:
+            trans_ops = []
+            trans_length = max(
+                1, int(np.log2(feature_strides[in_feature]) - 1)
+            )
+            for k in range(trans_length):
+                trans_ops.append(BottleneckBlock(
+                    in_channels=feature_channels[in_feature],
+                    out_channels=feature_channels[in_feature],
+                    bottleneck_channels=feature_channels[in_feature] // 4,
+                    stride=1,
+                    num_groups=1,
+                    stride_in_1x1=False,
+                    dilation=1,
+                ))
+            self.transitions.append(nn.Sequential(*trans_ops))
+            self.add_module(in_feature, self.transitions[-1])
+
+        self.lateral = []
+        self.down_path = []
+        self.up_path = []
+        for i in range(len(in_features) - 1):
+            lateral_conv = Conv2d(
+                    feature_channels[in_features[i + 1]],
+                    feature_channels[in_features[i + 1]],
+                    kernel_size=1,
+                    stride=1,
+                    padding=0,
+                    bias=not norm,
+                    norm=get_norm(norm, feature_channels[in_features[i + 1]]),
+                    activation=F.relu,
+                )
+            down_conv = Conv2d(
+                    feature_channels[in_features[i + 1]],
+                    feature_channels[in_features[i]],
+                    kernel_size=3,
+                    stride=1,
+                    padding=1,
+                    bias=not norm,
+                    norm=get_norm(norm, feature_channels[in_features[i]]),
+                    activation=F.relu,
+                )
+            up_conv = Conv2d(
+                    feature_channels[in_features[i]],
+                    feature_channels[in_features[i + 1]],
+                    kernel_size=3,
+                    stride=2,
+                    padding=1,
+                    bias=not norm,
+                    norm=get_norm(norm, feature_channels[in_features[i + 1]]),
+                    activation=F.relu,
+                )
+            weight_init.c2_msra_fill(lateral_conv)
+            weight_init.c2_msra_fill(down_conv)
+            weight_init.c2_msra_fill(up_conv)
+            self.lateral.append(lateral_conv)
+            self.down_path.append(down_conv)
+            self.up_path.append(up_conv)
+            self.add_module("lateral{}".format(i), lateral_conv)
+            self.add_module("down_path{}".format(i), down_conv)
+            self.add_module("up_path{}".format(i), up_conv)
+
+    def forward(self, features):
+        trans_features = []
+        for i, _ in enumerate(self.in_features):
+            x = self.transitions[i](features[i])
+            trans_features.append(x)
+        fused_features = []
+        for i, _ in enumerate(self.in_features):
+            if i == 0:
+                lateral_feat = trans_features[i]
+                down_feat = self.down_path[i](
+                    F.interpolate(trans_features[i + 1], scale_factor=2, mode="nearest"))
+                fused_feat = lateral_feat + down_feat + features[i]
+                fused_features.append(fused_feat)
+            elif i == len(self.in_features) - 1:
+                lateral_feat = self.lateral[i - 1](trans_features[i])
+                up_feat = self.up_path[i - 1](fused_features[i - 1])
+                fused_feat = lateral_feat + up_feat + features[i]
+                fused_features.append(fused_feat)
+            else:
+                lateral_feat = self.lateral[i - 1](trans_features[i])
+                down_feat = self.down_path[i](
+                    F.interpolate(trans_features[i + 1], scale_factor=2, mode="nearest"))
+                up_feat = self.up_path[i - 1](fused_features[i - 1])
+                fused_feat = lateral_feat + down_feat + up_feat + features[i]
+                fused_features.append(fused_feat)
+        return fused_features
+        
 
 @ROI_HEADS_REGISTRY.register()
 class SixDPoseROIHeads(StandardROIHeads):
@@ -217,15 +322,16 @@ class HCRROIHeads(StandardROIHeads):
         hcr_pooler_type             = cfg.MODEL.ROI_HCR_HEAD.POOLER_TYPE
         self.use_decoder              = cfg.MODEL.ROI_HCR_HEAD.TRANSITION_ON
         # fmt: on
-        if self.use_decoder:
-            hcr_pooler_scales = (1.0 / input_shape[self.in_features[0]].stride,)
-        else:
-            hcr_pooler_scales = tuple(1.0 / input_shape[k].stride for k in self.in_features)
+        # if self.use_decoder:
+        #     hcr_pooler_scales = (1.0 / input_shape[self.in_features[0]].stride,)
+        # else:
+        #     hcr_pooler_scales = tuple(1.0 / input_shape[k].stride for k in self.in_features)
+        hcr_pooler_scales = tuple(1.0 / input_shape[k].stride for k in self.in_features)
 
         in_channels = [input_shape[f].channels for f in self.in_features][0]
 
         if self.use_decoder:
-            self.decoder = Decoder(cfg, input_shape, self.in_features)
+            self.decoder = FeatureTransitionModule(cfg, input_shape, self.in_features)
 
         self.hcr_pooler = ROIPooler(
             output_size=hcr_pooler_resolution,
@@ -266,7 +372,7 @@ class HCRROIHeads(StandardROIHeads):
                 proposal_boxes = [x.proposal_boxes for x in proposals_hcr]
 
                 if self.use_decoder:
-                    features = [self.decoder(features)]
+                    features = self.decoder(features)
 
                 features_hcr = self.hcr_pooler(features, proposal_boxes)
                 hcr_head_outputs = self.hcr_head(features_hcr)
@@ -279,7 +385,7 @@ class HCRROIHeads(StandardROIHeads):
             pred_boxes = [x.pred_boxes for x in instances]
 
             if self.use_decoder:
-                features = [self.decoder(features)]
+                features = self.decoder(features)
                 
             features_hcr = self.hcr_pooler(features, pred_boxes)
             if len(features_hcr) > 0:

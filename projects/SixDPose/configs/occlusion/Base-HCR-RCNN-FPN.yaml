@@ -1,13 +1,17 @@
-_BASE_: "Base-RCNN-FPN.yaml"
 MODEL:
   HCR_ON: True
+  META_ARCHITECTURE: "GeneralizedRCNN"
   BACKBONE:
     NAME: "build_hcrnet_resneth_fpn_backbone"
   RESNETH:
+    DEPTH: 50
+    FREEZE_AT: 1
+    STRIDE_IN_1X1: False
     OUT_FEATURES: ["res2", "res3", "res4", "res5"]
     DILATION_ON_PER_STAGE: [False, False, False, False]
   FPN:
     IN_FEATURES: ["res2", "res3", "res4", "res5"]
+    OUT_CHANNELS: 128
   ANCHOR_GENERATOR:
     SIZES: [[16], [32], [64], [128], [256]]  # One size for each in feature map
     ASPECT_RATIOS: [[0.5, 1.0, 2.0]]  # Three aspect ratios (same for all in feature maps)
@@ -28,6 +32,9 @@ MODEL:
     NAME: "HCRROIHeads"
     IN_FEATURES: ["p2", "p3", "p4", "p5"]
   ROI_BOX_HEAD:
+    NAME: "FastRCNNConvFCHead"
+    NUM_FC: 2
+    POOLER_RESOLUTION: 7
     SMOOTH_L1_BETA: 0.5  # Keypoint AP degrades (though box AP improves) when using plain L1 loss
     TRAIN_ON_PRED_BOXES: False
   ROI_HCR_HEAD:
@@ -35,9 +42,10 @@ MODEL:
     HEATMAP_SIZE: 14
     HEATMAP_WEIGHTS: 1.0
     OFFSET_WEIGHTS: 1.0
-    TRANSITION_ON: False
+    TRANSITION_ON: True
 DATASETS:
-  TRAIN: ("keypoints_coco_2017_train",)
-  TEST: ("keypoints_coco_2017_val",)
+  TRAIN: ("occlusion_train",)
+  TEST: ("occlusion_val",)
 INPUT:
   MIN_SIZE_TRAIN: (320, 352, 384, 416, 448, 480)
+  KEYPOINT_FORMAT: 'bb8'   # 'bb8', 'fps8', 'bb8+fps8'

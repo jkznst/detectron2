@@ -268,13 +268,14 @@ def hcr_inference(hcr_outputs, pred_instances):
     #         instances.pred_masks = torch.zeros(size=(0, 0, 0, 0), device=pred_heatmap.device)
     #         instances.pred_keypoints = torch.zeros(size=(0, 0, 0), device=pred_offset.device)
 
-def _neg_loss(pred, gt, mask=None):
+def _neg_loss(pred, gt, mask=None, HHKM=False):
   ''' Modified focal loss. Exactly the same as CornerNet.
       Runs faster and costs a little bit more memory
     Arguments:
       pred (batch x c x h x w)
       gt_regr (batch x c x h x w)
       mask (batch x c x h x w)
+      HHKM: bool, hurestic hard keypoint mining
   '''
   if mask is not None:
     pos_inds = gt.eq(1).float() * mask
@@ -286,11 +287,21 @@ def _neg_loss(pred, gt, mask=None):
   neg_weights = torch.pow(1 - gt, 4)
 
   loss = 0
+#   print(pred[0, 0])
+#   print(gt[0, 0])
 
   pos_loss = torch.log(pred) * torch.pow(1 - pred, 2) * pos_inds
   neg_loss = torch.log(1 - pred) * torch.pow(pred, 2) * neg_weights * neg_inds
 
+  if HHKM:
+    km_weights = gt.float().sum(dim=[2, 3])
+    km_weights = 1.0 - 1.0 / km_weights 
+    km_normalizer = km_weights.mean()
+    pos_loss = pos_loss.sum(dim=[2, 3]) * km_weights / km_normalizer
+    neg_loss = neg_loss.sum(dim=[2, 3]) * km_weights / km_normalizer
+
   num_pos  = pos_inds.float().sum()
+#   print(num_pos)
   pos_loss = pos_loss.sum()
   neg_loss = neg_loss.sum()
 
@@ -328,6 +339,7 @@ class DenseRegL1Loss(nn.Module):
             target = target * 0 + 1
         # ignore and degrade faraway points
         mask = (mask.ge(self.mask_thresh).float() * mask.pow(self.mask_power)).expand_as(pred)
+        # print(mask.sum())
         loss = self.loss_fn(pred, target) * mask
         loss = loss.sum() / (mask.sum() + 1e-4)
         return loss
@@ -354,6 +366,8 @@ class DenseKLLoss(nn.Module):
         kl_loss = torch.where(condition, greater_loss, lower_loss)
         # ignore and degrade faraway points
         mask = (mask.ge(self.mask_thresh).float() * mask.pow(self.mask_power)).expand_as(pred)
+        # print(mask[0, 0])
+        # print(mask.sum())
         
         if self.ohcm_topk > 0:
             abs_error_ = torch.sum(abs_error * mask, dim=(2, 3))
@@ -527,6 +541,7 @@ class HCRLosses(object):
             # heatmap_probs=gt_hm_per_image, 
             # variances=gt_offsets_per_image, rois=instances_per_image.proposal_boxes.tensor)
             # print(kpt_[0])
+
             gt_hm_per_image = gt_hm_per_image.to(device=pred_heatmap.device)
             gt_offsets_per_image = gt_offsets_per_image.to(device=pred_offset.device)
             gt_valid_per_image = gt_valid_per_image.to(device=pred_offset.device)
