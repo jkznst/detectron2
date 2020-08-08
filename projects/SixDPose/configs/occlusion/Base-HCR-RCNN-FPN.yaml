@@ -5,7 +5,7 @@ MODEL:
     NAME: "build_hcrnet_resneth_fpn_backbone"
   RESNETH:
     DEPTH: 50
-    FREEZE_AT: 1
+    FREEZE_AT: 2
     STRIDE_IN_1X1: False
     OUT_FEATURES: ["res2", "res3", "res4", "res5"]
     DILATION_ON_PER_STAGE: [False, False, False, True]
@@ -41,7 +41,7 @@ MODEL:
   ROI_HCR_HEAD:
     NAME: "HCRConvHead"
     HEATMAP_SIZE: 14
-    NUM_STACKED_CONVS: 2
+    NUM_STACKED_CONVS: 4
     CONV_HEAD_DIM: 128
     NORM: ""
     CLS_AGNOSTIC_KEYPOINT: False
@@ -49,7 +49,7 @@ MODEL:
     KEYPOINT_REG_WEIGHT: 10.0
     HEATMAP_WEIGHTS: 1.0
     OFFSET_WEIGHTS: 1.0
-    TRANSITION_ON: True
+    TRANSITION_ON: False
 DATASETS:
   TRAIN: ("occlusion_train",)
   TEST: ("occlusion_val",)

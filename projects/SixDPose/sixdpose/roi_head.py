@@ -365,8 +365,8 @@ class HCRROIHeads(StandardROIHeads):
         # features = [features[f] for f in self.in_features]
         if self.training:
             proposals, _ = select_foreground_proposals(instances, self.num_classes)
-            proposals_hcr = self.hcr_data_filter(proposals)
-            # proposals_hcr = proposals
+            # proposals_hcr = self.hcr_data_filter(proposals)
+            proposals_hcr = proposals
             # print(len(proposals_pvnet[0]))
             if len(proposals_hcr) > 0:
                 proposal_boxes = [x.proposal_boxes for x in proposals_hcr]

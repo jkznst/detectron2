@@ -601,7 +601,7 @@ class HCRLosses(object):
         offset_mask = gt_heatmaps.float().repeat_interleave(2, dim=1)
         # print(offset_mask[0, :, 0, 0])
         offset_mask = offset_mask * gt_valid[..., None, None].float()
-        self.offset_crit = DenseKLLoss(norm=False, mask_thresh=0.9)
+        self.offset_crit = DenseKLLoss(norm=False, mask_thresh=1.0)
         offset_loss = self.offset_crit(pred_offset, gt_offsets, pred_var, offset_mask)
         
         losses['loss_offset'] = offset_loss * self.w_offset

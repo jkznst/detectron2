@@ -1,12 +1,11 @@
 _BASE_: "Base-HCR-RCNN-FPN.yaml"
 MODEL:
-  WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+  # WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+  WEIGHTS: "models/faster_rcnn_Rh_50_FPN_128_6x.pth"
   RESNETH:
     DEPTH: 50
   ROI_HCR_HEAD:
     OFFSET_WEIGHTS: 1.0
-  # KEYPOINT_ON: True
-  # PVNET_ON: False
 INPUT:
   MIN_SIZE_TRAIN: (320, 352, 384, 416, 448, 480)
   MAX_SIZE_TRAIN: 800
@@ -19,6 +18,6 @@ SOLVER: # for two GPUs
   MAX_ITER: 360000
   CHECKPOINT_PERIOD: 20000
 DATASETS:
-  TRAIN: ("occlusion_ape_train",)
-  TEST: ("occlusion_ape_val",)
-OUTPUT_DIR: "./output/sixdpose/occlusion/ape/hcr_rcnn_Rh_50_FPN_1x"
+  TRAIN: ("occlusion_can_train",)
+  TEST: ("occlusion_can_val",)
+OUTPUT_DIR: "./output/sixdpose/occlusion/can/hcr_rcnn_Rh_50_FPN_1x"
