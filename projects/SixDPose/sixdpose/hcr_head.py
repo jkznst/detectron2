@@ -55,16 +55,28 @@ class HCRConvHead(nn.Module):
         self.conv_norm_relus = []
 
         for k in range(num_conv):
-            conv = Conv2d(
-                input_channels if k == 0 else conv_dims,
-                conv_dims,
-                kernel_size=3,
-                stride=1,
-                padding=1,
-                bias=not self.norm,
-                norm=get_norm(self.norm, conv_dims),
-                activation=F.relu,
-            )
+            if k < num_conv - 1:
+                conv = Conv2d(
+                    input_channels if k == 0 else conv_dims,
+                    conv_dims,
+                    kernel_size=3,
+                    stride=1,
+                    padding=1,
+                    bias=not self.norm,
+                    norm=get_norm(self.norm, conv_dims),
+                    activation=F.relu,
+                )
+            else:
+                conv = Conv2d(
+                    input_channels if k == 0 else conv_dims,
+                    conv_dims,
+                    kernel_size=3,
+                    stride=2,
+                    padding=1,
+                    bias=not self.norm,
+                    norm=get_norm(self.norm, conv_dims),
+                    activation=F.relu,
+                )
             self.add_module("hcr_fcn{}".format(k + 1), conv)
             self.conv_norm_relus.append(conv)
 
