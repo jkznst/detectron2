@@ -55,7 +55,7 @@ class HCRConvHead(nn.Module):
         self.conv_norm_relus = []
 
         for k in range(num_conv):
-            if k < num_conv - 1:
+            if k < num_conv - 2:
                 conv = Conv2d(
                     input_channels if k == 0 else conv_dims,
                     conv_dims,
@@ -613,10 +613,15 @@ class HCRLosses(object):
         offset_mask = gt_heatmaps.float().repeat_interleave(2, dim=1)
         # print(offset_mask[0, :, 0, 0])
         offset_mask = offset_mask * gt_valid[..., None, None].float()
-        self.offset_crit = DenseKLLoss(norm=False, mask_thresh=1.0)
-        offset_loss = self.offset_crit(pred_offset, gt_offsets, pred_var, offset_mask)
+        # self.offset_crit = DenseKLLoss(norm=False, mask_thresh=1.0)
+        # offset_loss = self.offset_crit(pred_offset, gt_offsets, pred_var, offset_mask)
+
+        self.offset_crit = DenseRegL1Loss(norm=False, mask_thresh=1.0)
+        offset_loss = self.offset_crit(pred_offset, gt_offsets, offset_mask)
+        var_loss = self.offset_crit(pred_var, gt_offsets, offset_mask) * 0.0
         
         losses['loss_offset'] = offset_loss * self.w_offset
+        losses['loss_var'] = var_loss
         return losses
 
 
