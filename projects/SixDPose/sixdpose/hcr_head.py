@@ -55,7 +55,7 @@ class HCRConvHead(nn.Module):
         self.conv_norm_relus = []
 
         for k in range(num_conv):
-            if k < num_conv - 2:
+            if k < num_conv - 3:
                 conv = Conv2d(
                     input_channels if k == 0 else conv_dims,
                     conv_dims,
@@ -93,7 +93,7 @@ class HCRConvHead(nn.Module):
         
         self.heatmap_predictor = Conv2d(conv_dims, num_heatmaps, kernel_size=1, stride=1, padding=0)
         self.offset_predictor = Conv2d(conv_dims, num_offsets, kernel_size=1, stride=1, padding=0)
-        self.variance_predictor = Conv2d(conv_dims, num_offsets, kernel_size=1, stride=1, padding=0)
+        # self.variance_predictor = Conv2d(conv_dims, num_offsets, kernel_size=1, stride=1, padding=0)
 
         # for layer in self.conv_norm_relus + [self.deconv]:
         for layer in self.conv_norm_relus:
@@ -107,17 +107,17 @@ class HCRConvHead(nn.Module):
         if self.offset_predictor.bias is not None:
             nn.init.constant_(self.offset_predictor.bias, 0)
         # use normal distribution initialization for variance prediction layer
-        nn.init.normal_(self.variance_predictor.weight, std=0.001)
-        if self.variance_predictor.bias is not None:
-            nn.init.constant_(self.variance_predictor.bias, 0)
+        # nn.init.normal_(self.variance_predictor.weight, std=0.001)
+        # if self.variance_predictor.bias is not None:
+        #     nn.init.constant_(self.variance_predictor.bias, 0)
 
     def forward(self, x):
         for layer in self.conv_norm_relus:
             x = layer(x)
         # x = F.relu(self.deconv(x))
         return {"heatmap": self.heatmap_predictor(x),
-                "offset": self.offset_predictor(x),
-                "variance": self.variance_predictor(x)}
+                "offset": self.offset_predictor(x)}
+                # "variance": self.variance_predictor(x)}
 
 
 class HCRDataFilter(object):
@@ -249,7 +249,8 @@ def hcr_inference(hcr_outputs, pred_instances):
             the predicted masks to the original image resolution and/or binarizing them, is left
             to the caller.
     """
-    pred_heatmap, pred_offset, pred_var = hcr_outputs["heatmap"], hcr_outputs["offset"], hcr_outputs["variance"] 
+    pred_heatmap, pred_offset = hcr_outputs["heatmap"], hcr_outputs["offset"]
+    pred_var = torch.zeros_like(pred_offset) 
     
     if pred_heatmap.size(0) > 0:
         cls_agnostic_kpt = True #pred_heatmap.size(1) == 1
@@ -522,7 +523,7 @@ class HCRLosses(object):
         """
         losses = {}
         
-        pred_heatmap, pred_offset, pred_var = hcr_outputs["heatmap"], hcr_outputs["offset"], hcr_outputs["variance"]
+        pred_heatmap, pred_offset = hcr_outputs["heatmap"], hcr_outputs["offset"]
         
         cls_agnostic_kpt = pred_heatmap.size(1) == self.num_keypoints
         total_num_instances = pred_heatmap.size(0)
@@ -618,10 +619,10 @@ class HCRLosses(object):
 
         self.offset_crit = DenseRegL1Loss(norm=False, mask_thresh=1.0)
         offset_loss = self.offset_crit(pred_offset, gt_offsets, offset_mask)
-        var_loss = self.offset_crit(pred_var, gt_offsets, offset_mask) * 0.0
+        # var_loss = self.offset_crit(pred_var, gt_offsets, offset_mask) * 0.0
         
         losses['loss_offset'] = offset_loss * self.w_offset
-        losses['loss_var'] = var_loss
+        # losses['loss_var'] = var_loss
         return losses
 
 
