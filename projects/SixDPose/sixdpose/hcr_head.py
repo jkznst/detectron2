@@ -308,8 +308,11 @@ def _neg_loss(pred, gt, mask=None, HHKM=False):
 
   if HHKM:
     km_weights = gt.float().sum(dim=[2, 3])
-    km_weights = 1.0 - 1.0 / km_weights 
+    # print(km_weights)
+    # km_weights = 1.0 - 1.0 / km_weights 
+    km_weights = torch.log(km_weights + 1)
     km_normalizer = km_weights.mean()
+    # print(km_weights / km_normalizer)
     pos_loss = pos_loss.sum(dim=[2, 3]) * km_weights / km_normalizer
     neg_loss = neg_loss.sum(dim=[2, 3]) * km_weights / km_normalizer
 

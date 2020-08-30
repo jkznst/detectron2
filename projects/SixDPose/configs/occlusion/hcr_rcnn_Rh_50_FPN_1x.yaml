@@ -5,9 +5,9 @@ MODEL:
   RESNETH:
     DEPTH: 50
   ROI_HCR_HEAD:
-    OFFSET_WEIGHTS: 2.0
-    HEATMAP_WEIGHTS: 2.0
-    TRANSITION_ON: False
+    OFFSET_WEIGHTS: 0.5
+    HEATMAP_WEIGHTS: 0.5
+    TRANSITION_ON: True
     HEATMAP_SIZE: 2
 INPUT:
   MIN_SIZE_TRAIN: (320, 352, 384, 416, 448, 480)
@@ -21,6 +21,6 @@ SOLVER: # for two GPUs
   MAX_ITER: 360000
   CHECKPOINT_PERIOD: 40000
 DATASETS:
-  TRAIN: ("occlusion_can_train",)
-  TEST: ("occlusion_can_val",)
-OUTPUT_DIR: "./output/sixdpose/occlusion/can/hcr_rcnn_Rh_50_FPN_1x_hm2_l1oss_hw2_ow2"
+  TRAIN: ("occlusion_holepuncher_train",)
+  TEST: ("occlusion_holepuncher_val",)
+OUTPUT_DIR: "./output/sixdpose/occlusion/holepuncher/hcr_rcnn_Rh_50_FPN_1x_hm2_l1loss_hw0p5_ow0p5_tran"
