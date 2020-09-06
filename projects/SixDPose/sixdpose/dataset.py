@@ -152,7 +152,7 @@ def load_occlusion_json(json_file, image_root, dataset_name=None, extra_annotati
     #  'width': 640,
     #  'date_captured': '2013-11-17 05:57:24',
     #  'id': 1268}
-    imgs = coco_api.loadImgs(img_ids)
+    # imgs = coco_api.loadImgs(img_ids)
     # print(imgs[0])
     # anns is a list[list[dict]], where each dict is an annotation
     # record for an object. The inner list enumerates the objects in an image
@@ -169,8 +169,16 @@ def load_occlusion_json(json_file, image_root, dataset_name=None, extra_annotati
     #   'category_id': 16,
     #   'id': 42986},
     #  ...]
-    anns = [coco_api.imgToAnns[img_id] for img_id in img_ids]
-    # print(anns[0])
+    # anns = [coco_api.imgToAnns[img_id] for img_id in img_ids]
+    keep_idx = []
+    anns = []
+    for img_id in img_ids:
+        ann = coco_api.imgToAnns[img_id]
+        if len(ann) > 0:
+            anns.append(ann)
+            keep_idx.append(img_id)
+    imgs = coco_api.loadImgs(keep_idx)
+
 
     if "minival" not in json_file:
         # The popular valminusminival & minival annotations for COCO2014 contain this bug.
@@ -290,6 +298,7 @@ SPLITS = {
     "occlusion_glue_train": ("occlusion", "occlusion/occlusion_glue_train.json"),
     "occlusion_glue_val": ("occlusion", "occlusion/occlusion_glue_val.json"),
     "occlusion_holepuncher_train": ("occlusion", "occlusion/occlusion_holepuncher_train.json"),
+    "occlusion_pbr_holepuncher_train": ("occlusion_pbr", "occlusion_pbr/occlusion_pbr_holepuncher_train.json"),
     "occlusion_holepuncher_val": ("occlusion", "occlusion/occlusion_holepuncher_val.json"),
     # linemod datasets
     "linemod_ape_train": ("linemod/ape", "linemod/ape/linemod_ape_train.json"),
