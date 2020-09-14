@@ -278,6 +278,9 @@ def hcr_inference(hcr_outputs, pred_instances):
         for keypoint_results_per_image, instances_per_image in zip(keypoint_results, pred_instances):
             # keypoint_results_per_image is (num instances)x(num keypoints)x(x, y)
             instances_per_image.pred_keypoints = keypoint_results_per_image
+            v_scores = torch.mean(keypoint_results_per_image[:, :, -1], dim=1)
+            instances_per_image.scores *= v_scores
+            # print(instances_per_image)
     # elif pred_heatmap.size(0) == 0:
     #     for instances in pred_instances:
     #         instances.pred_masks = torch.zeros(size=(0, 0, 0, 0), device=pred_heatmap.device)
