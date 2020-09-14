@@ -243,4 +243,4 @@ class SixDPoseEvaluator(DatasetEvaluator):
         self.t_err = []
         self.mask_ap = []
         self.icp_add = []
-        return {'pose': {'proj2d': proj2d, 'add': add, 'cmd5': cmd5}}
+        return {'pose': {'proj2d': proj2d, 'add': add, 'cmd5': cmd5, 'r': rot_err, 't': t_err}}
