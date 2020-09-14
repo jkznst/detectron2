@@ -174,7 +174,7 @@ def decode_keypoints(offsets, heatmap_probs, variances, rois, kpt_reg_weight=10.
         variances: shape (B, 2*num_kpt, H, W)
         rois: shape (B, 4), xyxy
     return:
-        keypoints: shape (B, num_pkt, 3)
+        keypoints: shape (B, num_pkt, 5)
     '''
     assert offsets.size(0) == rois.size(0), "batch size dont match"
     if rois.numel() == 0:
@@ -199,6 +199,8 @@ def decode_keypoints(offsets, heatmap_probs, variances, rois, kpt_reg_weight=10.
 
     heatmap_probs_ = heatmap_probs.reshape(n * num_kpt, -1)
     max_probs, indices_probs = torch.max(heatmap_probs_, dim=-1, keepdim=False)
+    max_probs = max_probs.reshape(n, num_kpt, 1)
+
     indices_probs_x = indices_probs % heatmap_size
     indices_probs_y = indices_probs // heatmap_size
     grid_x = indices_probs_x.reshape(n, num_kpt) * interval_x[:, None] + lt_x[:, None]
@@ -221,7 +223,7 @@ def decode_keypoints(offsets, heatmap_probs, variances, rois, kpt_reg_weight=10.
     variances_xy = torch.stack([variances_x, variances_y], dim=-1) # shape (n, num_kpt, 2)
 
     kpt_2d = grid_xy + offsets_xy
-    kpt_2d = torch.cat((kpt_2d, variances_xy), dim=-1)   # shape (n, num_kpt, 4)
+    kpt_2d = torch.cat((kpt_2d, variances_xy, max_probs), dim=-1)   # shape (n, num_kpt, 5)
     # print(kpt_2d[0])
     return kpt_2d
 
