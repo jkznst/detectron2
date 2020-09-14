@@ -777,8 +777,8 @@ def synthesize_by_rendering(poses=[], model_ids=[]):
 
     return out, seg_appearance_label, ins_appearance_label_list, ins_occ_agnostic_label_list, detection_list
 
-def draw_original_3d_models(image, poses=[], model_ids=[]):
-    assert len(poses) > 0, "Length of poses is less than 1 !!"
+def draw_original_3d_models(image, poses=[], model_ids=[], cam_intrinsic=cam_intrinsic):
+    # assert len(poses) > 0, "Length of poses is less than 1 !!"
     assert len(poses) == len(model_ids), "The lengths of poses and model_ids are different !!"
 
     w, h = 640, 480
@@ -1098,7 +1098,126 @@ def record_occ_ann(model_meta, anno_file, data_root, img_id, ann_id, images, ann
 
     return img_id, ann_id
 
-def occlusion_to_coco(anno_file, data_root, model_meta, cls_name=None):
+
+def record_occ_pbr_ann(model_meta, anno_file, data_root, img_id, ann_id, images, annotations, cls_names=[]):
+    print("recording {} information in occlusion_pbr dataset ...".format(', '.join(str(cn) for cn in cls_names)))
+    K =  np.array([572.4114, 0.0, 325.2611082792282, 0.0, 573.57043, 242.04899594187737, 0.0, 0.0, 1.0]).reshape(3, 3)
+
+    img_type = 'synthetic'
+
+    inds = np.loadtxt(anno_file, np.str)
+    inds = [int(ind) for ind in inds]
+
+    # rgb_dir = os.path.join(data_root, 'JPEGImages')
+    xml_dir = os.path.join(os.path.dirname(anno_file).replace('ImageSets/Main', ''), 'Annotations')
+    for ind in tqdm(inds):
+        img_name = '{:05d}.jpg'.format(ind)
+        # rgb_path = os.path.join(rgb_dir, img_name)
+
+        xml_name = '{:05d}.xml'.format(ind)
+        xml_path = os.path.join(xml_dir, xml_name)
+        tree = ET.parse(xml_path)
+        root = tree.getroot()
+        size = root.find('size')
+        width = int(size.find('width').text)
+        height = int(size.find('height').text)
+        
+        img_id += 1
+        info = {'file_name': 'JPEGImages/' + img_name, 'height': height, 'width': width, 'id': img_id, 
+                'seg_map': ''}
+        images.append(info)
+
+        for ins_idx, obj in enumerate(root.findall('object')):
+            name = obj.find('name').text
+            if name in cls_names:
+                # label = cat2label[name] # for multi classes
+                label = 1   # for single class
+                cls = cat2cls[name]
+                bnd_box = obj.find('bndbox')
+                bbox = [
+                    int(bnd_box.find('xmin').text),
+                    int(bnd_box.find('ymin').text),
+                    int(bnd_box.find('xmax').text),
+                    int(bnd_box.find('ymax').text)
+                ]
+                bbox[2] -= bbox[0]
+                bbox[3] -= bbox[1]  # coco format (xmin, ymin, w, h)
+
+                transform = obj.find('transform').text
+                transform = [float(trans) for trans in transform.split(',')]
+                transform = np.array(transform).reshape((4, 4))
+                # print(transform)
+                pose = transform[0:3, :]    # shape (3, 4)
+
+                # center_2d = project(center_3d[None], K, pose)[0]
+                corner_3d = model_meta[name].bb8.T[:, 0:3]  # shape (8, 3)
+                corner_2d = obj.find('BB8').text
+                corner_2d = [float(i) for i in corner_2d.split(',')]
+                corner_2d = np.array(corner_2d).reshape((-1, 2)) * np.array([width, height], dtype=np.float)  # x,y
+
+                center_3d = np.zeros((3,), dtype=np.float)
+                center_2d = obj.find('center').text
+                center_2d = [float(i) for i in center_2d.split(',')]
+                center_2d = np.array(center_2d) * np.array([width, height], dtype=np.float)  # x,y
+
+                fps_3d = model_meta[name].fps8.T[:, 0:3]    # shape (8, 3)
+                fps_2d = obj.find('fps8').text
+                fps_2d = [float(i) for i in fps_2d.split(',')]
+                fps_2d = np.array(fps_2d).reshape((-1, 2)) * np.array([width, height], dtype=np.float)  # x,y
+
+                mask_path = os.path.join(data_root, 'SegmentationObject', '{:05d}_{:03d}.png'.format(ind, ins_idx))
+                mask_occ_agn_path = os.path.join(data_root, 'SegmentationObjectOccAgn', '{:05d}_{:03d}.png'.format(ind, ins_idx))
+
+                if not os.path.exists(mask_path):
+                    print("instance with no appearance mask !!!!")
+                    continue
+                mask = cv2.imread(mask_path)
+                # cv2.imshow("1", mask)
+                # cv2.waitKey(0)
+                mask = np.asfortranarray(mask)
+                mask = mask_util.encode(mask)[0]
+                # "counts" is an array encoded by mask_util as a byte-stream. Python3's
+                # json writer which always produces strings cannot serialize a bytestream
+                # unless you decode it. Thankfully, utf-8 works out (which is also what
+                # the pycocotools/_mask.pyx does).
+                mask["counts"] = mask["counts"].decode("utf-8")
+                # print(mask['counts'])
+
+                # regen_mask = mask_util.decode(mask) * 255
+                # cv2.imshow("1", regen_mask)
+                # cv2.waitKey(0)
+
+                if not os.path.exists(mask_occ_agn_path):
+                    print("instance with no occlusion-agnostic mask !!!!")
+                    continue
+                mask_occ_agn = cv2.imread(mask_occ_agn_path)
+                # cv2.imshow("1", mask)
+                # cv2.waitKey(0)
+                mask_occ_agn = np.asfortranarray(mask_occ_agn)
+                mask_occ_agn = mask_util.encode(mask_occ_agn)[0]
+                mask_occ_agn_area = mask_util.area(mask_occ_agn)
+                # print(mask_occ_agn_area)
+                mask_occ_agn["counts"] = mask_occ_agn["counts"].decode("utf-8")
+
+                # # regen_mask_occ_agn = mask_util.decode(mask_occ_agn) * 255
+                # # cv2.imshow("1", regen_mask)
+                # # cv2.waitKey(0)
+
+                ann_id += 1
+                anno = {'segmentation': mask, 'segmentation_occagn': mask_occ_agn, 'bbox': bbox,
+                        'image_id': img_id, 'category_id': label, 'id': ann_id, 'area': int(mask_occ_agn_area)}
+                anno.update({'corner_3d': corner_3d.tolist(), 'corner_2d': corner_2d.tolist()})
+                anno.update({'center_3d': center_3d.tolist(), 'center_2d': center_2d.tolist()})
+                anno.update({'fps_3d': fps_3d.tolist(), 'fps_2d': fps_2d.tolist()})
+                anno.update({'K': K.tolist(), 'pose': pose.tolist()})
+                # anno.update({'data_root': rgb_dir})
+                anno.update({'type': img_type, 'cls': cls})
+                annotations.append(anno)
+
+    return img_id, ann_id
+
+
+def occlusion_to_coco(anno_file, data_root, model_meta, cls_name=None, pbr=False):
     img_id = 0
     ann_id = 0
     images = []
@@ -1124,7 +1243,10 @@ def occlusion_to_coco(anno_file, data_root, model_meta, cls_name=None):
         for i, cn in enumerate(cls_name):
             categories.append({'supercategory': 'none', 'id': i + 1, 'name': cat2cls[cn]})
 
-    img_id, ann_id = record_occ_ann(model_meta, anno_file, data_root, img_id, ann_id, images, annotations, cls_names=cls_name_list)
+    if pbr:
+        img_id, ann_id = record_occ_pbr_ann(model_meta, anno_file, data_root, img_id, ann_id, images, annotations, cls_names=cls_name_list)
+    else:
+        img_id, ann_id = record_occ_ann(model_meta, anno_file, data_root, img_id, ann_id, images, annotations, cls_names=cls_name_list)
     print('total images = ', img_id)
     print('total annos = ', ann_id)
 
@@ -1259,6 +1381,7 @@ if __name__ == "__main__":
     # occlusion_to_coco(anno_file=os.path.join(ImageSets_path, 'val.txt'), 
     #                 data_root='data/COCO+OCCLUSION_fusion_rendering', model_meta=LINEMOD_models, cls_name='obj_12')
 
+
     # synthesize training set by fusion, extract object patches from corresponding sequences
     print('synthesize training set by fusion...')
     fusion_image_num = 10000
@@ -1370,5 +1493,106 @@ if __name__ == "__main__":
     #     f.close()
 
     # convert to coco json format
+    # occlusion_to_coco(anno_file=os.path.join(ImageSets_path, 'train.txt'), 
+    #                 data_root='data/COCO+OCCLUSION_fusion_rendering', model_meta=LINEMOD_models, cls_name='obj_11')
+
+    
+    occ_pbr_path = '/data/ZHANGXIN/DATASETS/train_pbr/'
+    save_path = './data/COCO+OCCLUSION_pbr/'
+
+    if not os.path.exists(save_path):
+        os.mkdir(save_path)
+    JPEGImage_path = save_path + 'JPEGImages/'
+    if not os.path.exists(JPEGImage_path):
+        os.mkdir(JPEGImage_path)
+    Segment_path = save_path + 'SegmentationClass/'
+    if not os.path.exists(Segment_path):
+        os.mkdir(Segment_path)
+    InstanceApp_path = save_path + 'SegmentationObject/'
+    if not os.path.exists(InstanceApp_path):
+        os.mkdir(InstanceApp_path)
+    InstanceOccAgn_path = save_path + 'SegmentationObjectOccAgn/'
+    if not os.path.exists(InstanceOccAgn_path):
+        os.mkdir(InstanceOccAgn_path)
+    ImageSets_path = save_path + 'ImageSets/Main/'
+    if not os.path.exists(ImageSets_path):
+        os.makedirs(ImageSets_path)
+
+    # transform pose annotations for occ_pbr images
+    print('Transforming pose annotations for occ_pbr images...')
+    print("total number of occ_pbr images = {:d}".format(50000))
+    # for scene_idx in tqdm(range(30, 50)):
+    #     with open(os.path.join(occ_pbr_path, "{:06d}".format(scene_idx), "scene_camera.json"), 'r') as f:
+    #         scene_camera = json.load(f)
+    #         f.close()
+    #     with open(os.path.join(occ_pbr_path, "{:06d}".format(scene_idx), "scene_gt.json"), 'r') as f:
+    #         scene_gt = json.load(f)
+    #         f.close()
+    #     with open(os.path.join(occ_pbr_path, "{:06d}".format(scene_idx), "scene_gt_info.json"), 'r') as f: 
+    #         scene_gt_info = json.load(f)
+    #         f.close()
+
+    #     for img_idx in tqdm(range(1000)):
+    #         img_name = '{:06d}.jpg'.format(img_idx)
+    #         image = cv2.imread(os.path.join(occ_pbr_path, "{:06d}".format(scene_idx), 'rgb', img_name)).astype(np.float32) / 255.0
+    #         resize_img = cv2.resize(src=image, dsize=(640, 480))
+
+    #         img_camera = scene_camera[str(img_idx)]
+    #         img_gt = scene_gt[str(img_idx)]
+    #         img_gt_info = scene_gt_info[str(img_idx)]
+
+    #         cam_K = np.array(img_camera["cam_K"]).reshape((3,3))
+    #         # print(cam_K)
+            
+    #         current_gt_poses = []
+    #         current_model_ids = []
+    #         ins_app_label_list = []
+    #         ins_occ_agn_label_list = []
+    #         for idx_instance in range(len(img_gt)):
+    #             cid = img_gt[idx_instance]['obj_id']
+    #             visib_fract = img_gt_info[idx_instance]['visib_fract']
+    #             if cid in occlusion_model_ids and visib_fract >= 0.25:
+    #                 gt_rotation = np.array(img_gt[idx_instance]['cam_R_m2c'])
+    #                 gt_translation = np.array(img_gt[idx_instance]['cam_t_m2c']) * scale_to_meters
+        
+    #                 temp_gt_pose = np.eye(4)
+    #                 temp_gt_pose[0:3, 0:3] = gt_rotation.reshape((3,3))
+    #                 temp_gt_pose[0:3, 3:4] = gt_translation.reshape((3,1))
+        
+    #                 current_gt_poses.append(temp_gt_pose)
+    #                 current_model_ids.append(cid)
+
+    #                 mask = cv2.imread(os.path.join(occ_pbr_path, "{:06d}".format(scene_idx), "mask", "{:06d}_{:06d}.png".format(img_idx, idx_instance)))
+    #                 # cv2.imshow('mask', mask)
+    #                 # cv2.waitKey()
+    #                 mask_visib = cv2.imread(os.path.join(occ_pbr_path, "{:06d}".format(scene_idx), "mask_visib", "{:06d}_{:06d}.png".format(img_idx, idx_instance)))
+    #                 ins_app_label_list.append(mask_visib)
+    #                 ins_occ_agn_label_list.append(mask)
+
+    #         out, _, _, _, gt_list = \
+    #             draw_original_3d_models(resize_img, poses=current_gt_poses, model_ids=current_model_ids, cam_intrinsic=cam_K)
+    #         # cv2.imshow('1', out)
+    #         # cv2.imshow('label', out_label / 255.0)
+    #         # cv2.waitKey()
+        
+    #         # save transformed pose annotations
+    #         idx_image = scene_idx * 1000 + img_idx
+    #         cv2.imwrite(JPEGImage_path + '{:05d}.jpg'.format(idx_image), out * 255)
+    #         # cv2.imwrite(Segment_path + '{:05d}.png'.format(idx_image), seg_app_label)
+    #         for ins_idx, (ins_app_label, ins_occ_agn_label) in enumerate(zip(ins_app_label_list, ins_occ_agn_label_list)):
+    #                 cv2.imwrite(InstanceApp_path + '{:05d}_{:03d}.png'.format(idx_image, ins_idx), ins_app_label)
+    #                 cv2.imwrite(InstanceOccAgn_path + '{:05d}_{:03d}.png'.format(idx_image, ins_idx), ins_occ_agn_label)
+        
+    #         # [image_name, image_height, image_width, detection_list]
+    #         xml_gt_info = ['{:05d}.jpg'.format(idx_image), resize_img.shape[0], resize_img.shape[1], gt_list]
+    #         save_xml(xml_gt_info, save_path + 'Annotations/' + '{:05d}.xml'.format(idx_image))
+
+    # # write train.txt
+    # with open(ImageSets_path + 'train.txt', 'w') as f:
+    #     for i in range(50000):
+    #         f.write('{:05d}\n'.format(i))
+    #     f.close()
+
+    # convert to coco json format
     occlusion_to_coco(anno_file=os.path.join(ImageSets_path, 'train.txt'), 
-                    data_root='data/COCO+OCCLUSION_fusion_rendering', model_meta=LINEMOD_models, cls_name='obj_11')
+                    data_root='data/COCO+OCCLUSION_pbr', model_meta=LINEMOD_models, cls_name='obj_12', pbr=True)
