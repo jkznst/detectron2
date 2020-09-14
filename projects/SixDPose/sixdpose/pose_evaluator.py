@@ -106,6 +106,8 @@ class SixDPoseEvaluator(DatasetEvaluator):
         self.diameter = DIAMETERS[self.thing_classes] / 1000.
 
         self.proj2d = []
+        self.rot_err = []
+        self.t_err = []
         self.add = []
         self.icp_add = []
         self.cmd5 = []
@@ -118,6 +120,8 @@ class SixDPoseEvaluator(DatasetEvaluator):
         self.add = []
         self.icp_add = []
         self.cmd5 = []
+        self.rot_err = []
+        self.t_err = []
         self.mask_ap = []
 
     def projection_2d(self, pose_pred, pose_targets, K, threshold=5):
@@ -151,6 +155,8 @@ class SixDPoseEvaluator(DatasetEvaluator):
         trace = trace if trace <= 3 else 3
         angular_distance = np.rad2deg(np.arccos((trace - 1.) / 2.))
         self.cmd5.append(translation_distance < 5 and angular_distance < 5)
+        self.rot_err.append(angular_distance)
+        self.t_err.append(translation_distance)
 
     def mask_iou(self, output, batch):
         mask_pred = torch.argmax(output['seg'], dim=1)[0].detach().cpu().numpy()
@@ -219,16 +225,22 @@ class SixDPoseEvaluator(DatasetEvaluator):
         proj2d = np.mean(self.proj2d)
         add = np.mean(self.add)
         cmd5 = np.mean(self.cmd5)
+        rot_err = np.median(self.rot_err)
+        t_err = np.median(self.t_err)
         # ap = np.mean(self.mask_ap)
         print('2d projections metric: {}'.format(proj2d))
         print('ADD metric: {}'.format(add))
         print('5 cm 5 degree metric: {}'.format(cmd5))
+        print('median rotation error (degree) metric: {}'.format(rot_err))
+        print('median translation error (cm) metric: {}'.format(t_err))
         # print('mask ap70: {}'.format(ap))
         if self.icp_render is not None:
             print('ADD metric after icp: {}'.format(np.mean(self.icp_add)))
         self.proj2d = []
         self.add = []
         self.cmd5 = []
+        self.rot_err = []
+        self.t_err = []
         self.mask_ap = []
         self.icp_add = []
         return {'pose': {'proj2d': proj2d, 'add': add, 'cmd5': cmd5}}
