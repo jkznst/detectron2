@@ -150,13 +150,14 @@ class SixDPoseEvaluator(DatasetEvaluator):
 
     def cm_degree_5_metric(self, pose_pred, pose_targets):
         translation_distance = np.linalg.norm(pose_pred[:, 3] - pose_targets[:, 3]) * 100
+        t_err = np.linalg.norm(pose_pred[:, 3] - pose_targets[:, 3]) / np.linalg.norm(pose_targets[:, 3]) 
         rotation_diff = np.dot(pose_pred[:, :3], pose_targets[:, :3].T)
         trace = np.trace(rotation_diff)
         trace = trace if trace <= 3 else 3
         angular_distance = np.rad2deg(np.arccos((trace - 1.) / 2.))
         self.cmd5.append(translation_distance < 5 and angular_distance < 5)
         self.rot_err.append(angular_distance)
-        self.t_err.append(translation_distance)
+        self.t_err.append(t_err)
 
     def mask_iou(self, output, batch):
         mask_pred = torch.argmax(output['seg'], dim=1)[0].detach().cpu().numpy()
@@ -232,7 +233,7 @@ class SixDPoseEvaluator(DatasetEvaluator):
         print('ADD metric: {}'.format(add))
         print('5 cm 5 degree metric: {}'.format(cmd5))
         print('median rotation error (degree) metric: {}'.format(rot_err))
-        print('median translation error (cm) metric: {}'.format(t_err))
+        print('median translation error metric: {}'.format(t_err))
         # print('mask ap70: {}'.format(ap))
         if self.icp_render is not None:
             print('ADD metric after icp: {}'.format(np.mean(self.icp_add)))
