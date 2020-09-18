@@ -15,19 +15,19 @@ from fvcore.common.file_io import PathManager
 logger = logging.getLogger(__name__)
 
 # fmt: off
-# SIXDPOSE_KEYPOINT_NAMES = (
-#     "center",
-#     # bb8
-#     "bb8_0", "bb8_1",
-#     "bb8_2", "bb8_3",
-#     "bb8_4", "bb8_5",
-#     "bb8_6", "bb8_7",
-#     # fps8
-#     "fps8_0", "fps8_1",
-#     "fps8_2", "fps8_3",
-#     "fps8_4", "fps8_5",
-#     "fps8_6", "fps8_7",
-# )
+SIXDPOSE_KEYPOINT_NAMES = (
+    "center",
+    # bb8
+    "bb8_0", "bb8_1",
+    "bb8_2", "bb8_3",
+    "bb8_4", "bb8_5",
+    "bb8_6", "bb8_7",
+    # fps8
+    # "fps8_0", "fps8_1",
+    # "fps8_2", "fps8_3",
+    # "fps8_4", "fps8_5",
+    # "fps8_6", "fps8_7",
+)
 # fmt: on
 
 # Pairs of keypoints that should be exchanged under horizontal flipping
@@ -71,13 +71,13 @@ FPS8_KEYPOINT_CONNECTION_RULES = [
     ("center", "fps8_7", (153, 255, 204)),
 ]
 
-# def get_sixdpose_metadata():
-#     meta = {
-#         "keypoint_names": SIXDPOSE_KEYPOINT_NAMES,
-#         "keypoint_flip_map": SIXDPOSE_KEYPOINT_FLIP_MAP,
-#         "keypoint_connection_rules": KEYPOINT_CONNECTION_RULES,
-#     }
-#     return meta
+def get_sixdpose_metadata():
+    meta = {
+        "keypoint_names": SIXDPOSE_KEYPOINT_NAMES,
+        # "keypoint_flip_map": SIXDPOSE_KEYPOINT_FLIP_MAP,
+        "keypoint_connection_rules": BB8_KEYPOINT_CONNECTION_RULES,
+    }
+    return meta
 
 def load_occlusion_json(json_file, image_root, dataset_name=None, extra_annotation_keys=None):
     """
@@ -337,6 +337,7 @@ for key, (image_root, json_file) in SPLITS.items():
     # Assume pre-defined datasets live in `./datasets`.
     json_file = os.path.join("datasets", json_file)
     image_root = os.path.join("datasets", image_root)
+    meta = get_sixdpose_metadata()
 
     DatasetCatalog.register(
         key,
@@ -346,7 +347,7 @@ for key, (image_root, json_file) in SPLITS.items():
     )
 
     MetadataCatalog.get(key).set(
-        json_file=json_file, image_root=image_root
+        json_file=json_file, image_root=image_root, **meta
     )
 
 if __name__ == "__main__":
