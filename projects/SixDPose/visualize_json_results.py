@@ -354,6 +354,15 @@ class SixDPoseVisualizer(Visualizer):
     #             if keypoint_names:
     #                 keypoint_name = keypoint_names[idx]
     #                 visible[keypoint_name] = (x, y)
+    #             # draw kpt probs
+    #             lighter_color = self._change_color_brightness(_RED, brightness_factor=0.7)
+    #             self.draw_text(
+    #                     prob,
+    #                     (x, y),
+    #                     color=lighter_color,
+    #                     horizontal_alignment="center",
+    #                     font_size=self._default_font_size,
+    #                 )
 
     #     if self.metadata.get("keypoint_connection_rules"):
     #         for kp0, kp1, color in self.metadata.keypoint_connection_rules:
@@ -362,31 +371,6 @@ class SixDPoseVisualizer(Visualizer):
     #                 x1, y1 = visible[kp1]
     #                 color = tuple(x / 255.0 for x in color)
     #                 self.draw_line([x0, x1], [y0, y1], color=color)
-
-    #     # draw lines from nose to mid-shoulder and mid-shoulder to mid-hip
-    #     # Note that this strategy is specific to person keypoints.
-    #     # For other keypoints, it should just do nothing
-    #     try:
-    #         ls_x, ls_y = visible["left_shoulder"]
-    #         rs_x, rs_y = visible["right_shoulder"]
-    #         mid_shoulder_x, mid_shoulder_y = (ls_x + rs_x) / 2, (ls_y + rs_y) / 2
-    #     except KeyError:
-    #         pass
-    #     else:
-    #         # draw line from nose to mid-shoulder
-    #         nose_x, nose_y = visible.get("nose", (None, None))
-    #         if nose_x is not None:
-    #             self.draw_line([nose_x, mid_shoulder_x], [nose_y, mid_shoulder_y], color=_RED)
-
-    #         try:
-    #             # draw line from mid-shoulder to mid-hip
-    #             lh_x, lh_y = visible["left_hip"]
-    #             rh_x, rh_y = visible["right_hip"]
-    #         except KeyError:
-    #             pass
-    #         else:
-    #             mid_hip_x, mid_hip_y = (lh_x + rh_x) / 2, (lh_y + rh_y) / 2
-    #             self.draw_line([mid_hip_x, mid_shoulder_x], [mid_hip_y, mid_shoulder_y], color=_RED)
     #     return self.output
 
     def _convert_keypoints(self, keypoints):
@@ -395,6 +379,49 @@ class SixDPoseVisualizer(Visualizer):
         keypoints = np.asarray(keypoints).reshape((-1, 9, 5))
         keypoints = keypoints[:, :, [0, 1, 4]]
         return keypoints
+
+    # def draw_dataset_dict(self, dic):
+    #     """
+    #     Draw annotations/segmentaions in Detectron2 Dataset format.
+
+    #     Args:
+    #         dic (dict): annotation/segmentation data of one image, in Detectron2 Dataset format.
+
+    #     Returns:
+    #         output (VisImage): image object with visualizations.
+    #     """
+    #     annos = dic.get("annotations", None)
+    #     if annos:
+    #         if "segmentation" in annos[0]:
+    #             masks = [x["segmentation"] for x in annos]
+    #         else:
+    #             masks = None
+    #         if "keypoints" in annos[0]:
+    #             keypts = [x["keypoints"] for x in annos]
+    #             keypts = np.array(keypts).reshape(len(annos), -1, 3)
+    #         else:
+    #             keypts = None
+
+    #         boxes = [BoxMode.convert(x["bbox"], x["bbox_mode"], BoxMode.XYXY_ABS) for x in annos]
+
+    #         labels = [x["category_id"] for x in annos]
+    #         colors = None
+    #         if self._instance_mode == ColorMode.SEGMENTATION and self.metadata.get("thing_colors"):
+    #             colors = [
+    #                 self._jitter([x / 255 for x in self.metadata.thing_colors[c]]) for c in labels
+    #             ]
+    #         names = self.metadata.get("thing_classes", None)
+    #         if names:
+    #             labels = [names[i] for i in labels]
+    #         labels = [
+    #             "{}".format(i) + ("|crowd" if a.get("iscrowd", 0) else "")
+    #             for i, a in zip(labels, annos)
+    #         ]
+    #         self.overlay_instances(
+    #             labels=labels, boxes=boxes, masks=masks, keypoints=keypts, assigned_colors=colors
+    #         )
+
+    #     return self.output
 
 
 if __name__ == "__main__":
