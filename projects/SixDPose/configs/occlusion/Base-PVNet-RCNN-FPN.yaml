@@ -1,0 +1,60 @@
+MODEL:
+  PVNET_ON: True
+  META_ARCHITECTURE: "GeneralizedRCNN"
+  BACKBONE:
+    NAME: "build_hcrnet_resneth_fpn_backbone"
+  RESNETH:
+    DEPTH: 50
+    FREEZE_AT: 2
+    STRIDE_IN_1X1: False
+    OUT_FEATURES: ["res2", "res3", "res4", "res5"]
+    DILATION_ON_PER_STAGE: [False, False, False, True]
+  FPN:
+    IN_FEATURES: ["res2", "res3", "res4", "res5"]
+    OUT_CHANNELS: 128
+  ANCHOR_GENERATOR:
+    SIZES: [[16], [32], [64], [128], [256]]  # One size for each in feature map
+    ASPECT_RATIOS: [[0.5, 1.0, 2.0]]  # Three aspect ratios (same for all in feature maps)
+  RPN:
+    IN_FEATURES: ["p2", "p3", "p4", "p5", "p6"]
+    PRE_NMS_TOPK_TRAIN: 2000  # Per FPN level
+    PRE_NMS_TOPK_TEST: 1000  # Per FPN level
+    # Detectron1 uses 2000 proposals per-batch,
+    # (See "modeling/rpn/rpn_outputs.py" for details of this legacy issue)
+    # which is approximately 1000 proposals per-image since the default batch size for FPN is 2.
+    # Detectron1 uses 2000 proposals per-batch, but this option is per-image in detectron2.
+    # 1000 proposals per-image is found to hurt box AP.
+    # Therefore we increase it to 1500 per-image.
+    POST_NMS_TOPK_TRAIN: 1500
+    POST_NMS_TOPK_TEST: 1000
+  ROI_HEADS:
+    NUM_CLASSES: 1
+    NAME: "SixDPoseROIHeads"
+    IN_FEATURES: ["p2", "p3", "p4", "p5"]
+  ROI_BOX_HEAD:
+    NAME: "FastRCNNConvFCHead"
+    NUM_FC: 2
+    FC_DIM: 512
+    POOLER_RESOLUTION: 7
+    SMOOTH_L1_BETA: 0.5  # Keypoint AP degrades (though box AP improves) when using plain L1 loss
+    TRAIN_ON_PRED_BOXES: False
+  ROI_PVNET_HEAD:
+    NAME: "KRCNNConvDeconvUpsampleHead"
+    HEATMAP_SIZE: 56
+    DECONV_KERNEL: 4
+    UP_SCALE: 2
+    NUM_STACKED_CONVS: 4
+    CONV_HEAD_DIM: 128
+    NORM: ""
+    CLS_AGNOSTIC_MASK: False
+    NUM_KEYPOINTS: 9
+    MASK_WEIGHTS: 1.0
+    VERTEX_WEIGHTS: 2.0
+    DECODER_ON: False
+DATASETS:
+  TRAIN: ("occlusion_train",)
+  TEST: ("occlusion_val",)
+INPUT:
+  MIN_SIZE_TRAIN: (320, 352, 384, 416, 448, 480)
+  MASK_FORMAT: "bitmask"
+  KEYPOINT_FORMAT: 'bb8'   # 'bb8', 'fps8', 'bb8+fps8'
