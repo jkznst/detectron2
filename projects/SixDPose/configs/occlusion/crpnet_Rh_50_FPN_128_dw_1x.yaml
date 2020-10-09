@@ -19,7 +19,7 @@ MODEL:
     KPT_WEIGHT: 1.0
 DATASETS:
   TRAIN: ("occlusion_can_train",)
-  TEST: ("occlusion_can_val",)
+  TEST: ("occlusion_duck_val",)
 SOLVER: # for 2 GPUs
   IMS_PER_BATCH: 4
   BASE_LR: 0.0025  # original 0.00125
@@ -31,4 +31,4 @@ INPUT:
   MAX_SIZE_TRAIN: 800
   MIN_SIZE_TEST: 480
   MAX_SIZE_TEST: 800
-OUTPUT_DIR: "./output/sixdpose/occlusion/can/crpnet_Rh_50_FPN_128_dw_res5d_1x"
+OUTPUT_DIR: "./output/sixdpose/occlusion/duck/crpnet_Rh_50_FPN_128_dw_res5d_1x"
