@@ -1,0 +1,26 @@
+_BASE_: "Base-HCR-RCNN-FPN.yaml"
+MODEL:
+  # WEIGHTS: "detectron2://ImageNetPretrained/MSRA/R-50.pkl"
+  WEIGHTS: "models/faster_rcnn_Rh_50_FPN_128_6x.pth"
+  RESNETH:
+    DEPTH: 50
+  ROI_HCR_HEAD:
+    OFFSET_WEIGHTS: 0.5
+    HEATMAP_WEIGHTS: 0.5
+    TRANSITION_ON: True
+    HEATMAP_SIZE: 2
+INPUT:
+  MIN_SIZE_TRAIN: (400,)
+  MAX_SIZE_TRAIN: 800
+  MIN_SIZE_TEST: 400
+  MAX_SIZE_TEST: 800
+SOLVER: # for two GPUs
+  IMS_PER_BATCH: 4
+  BASE_LR: 0.005
+  STEPS: (15000, 20000)
+  MAX_ITER: 22500
+  CHECKPOINT_PERIOD: 5000
+DATASETS:
+  TRAIN: ("toy_01_train",)
+  TEST: ("toy_01_val",)
+OUTPUT_DIR: "./output/sixdpose/toy/cube/hcr_rcnn_Rh_50_FPN_1x_hm2_l1loss_hw0p5_ow0p5_tran"

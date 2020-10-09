@@ -328,6 +328,15 @@ SPLITS = {
     "linemod_phone_train": ("linemod/phone", "linemod/phone/linemod_phone_train.json"),
     "linemod_phone_val": ("linemod/phone", "linemod/phone/linemod_phone_val.json"),
     # tless datasets TODO
+    "tless_toy_05_train": ("tless_toy/obj_05", "tless_toy/obj_05/train_obj_05.json"),
+    "tless_toy_05_val": ("tless_toy/obj_05", "tless_toy/obj_05/train_obj_05.json"),
+    # toy dataset
+    "toy_01_train": ("toy/cube", "toy/cube/train_cube.json"),
+    "toy_01_val": ("toy/cube", "toy/cube/val_cube.json"),
+    "toy_02_train": ("toy/cup", "toy/cup/train_cup.json"),
+    "toy_02_val": ("toy/cup", "toy/cup/val_cup.json"),
+    "toy_03_train": ("toy/cylinder", "toy/cylinder/train_cylinder.json"),
+    "toy_03_val": ("toy/cylinder", "toy/cylinder/val_cylinder.json"),
 }
 
 SIXDPOSE_KEYS = ["corner_3d", "corner_2d", "center_3d", "center_2d", "fps_3d", "fps_2d",
