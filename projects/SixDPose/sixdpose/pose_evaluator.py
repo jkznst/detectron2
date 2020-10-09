@@ -31,6 +31,7 @@ from detectron2.evaluation import DatasetEvaluator
 from .pvnet_pose_utils import project, pnp
 
 DIAMETERS = {
+    # LINEMOD
     'ape': 102.099,
     'benchvise': 247.506,
     'bowl': 167.355,
@@ -45,7 +46,13 @@ DIAMETERS = {
     'holepuncher': 145.543,
     'iron': 278.078,
     'lamp': 282.601,
-    'phone': 212.358
+    'phone': 212.358,
+    # TLESS
+    'obj_05': 108.69,
+    # toy
+    'obj_01': 138.56410452431246,
+    'obj_02': 127.03435730703477,
+    'obj_03': 93.20019624216526,
 }
 
 def get_ply_model(model_path):
@@ -154,6 +161,7 @@ class SixDPoseEvaluator(DatasetEvaluator):
         rotation_diff = np.dot(pose_pred[:, :3], pose_targets[:, :3].T)
         trace = np.trace(rotation_diff)
         trace = trace if trace <= 3 else 3
+        trace = trace if trace >= -1 else -1
         angular_distance = np.rad2deg(np.arccos((trace - 1.) / 2.))
         self.cmd5.append(translation_distance < 5 and angular_distance < 5)
         self.rot_err.append(angular_distance)
@@ -228,6 +236,8 @@ class SixDPoseEvaluator(DatasetEvaluator):
         cmd5 = np.mean(self.cmd5)
         rot_err = np.median(self.rot_err)
         t_err = np.median(self.t_err)
+        print(self.rot_err)
+        print(self.add)
         # ap = np.mean(self.mask_ap)
         print('2d projections metric: {}'.format(proj2d))
         print('ADD metric: {}'.format(add))
