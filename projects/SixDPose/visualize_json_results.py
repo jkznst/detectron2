@@ -1,9 +1,7 @@
 #!/usr/bin/env python
 # usage: 
 '''
-python projects/SixDPose/visualize_json_results.py 
---input output/sixdpose/linemod/holepuncher/hcr_rcnn_Rh_50_FPN_1x_hm2_l1loss_hw0p5_ow0p5_tran/inference/coco_instances_results.json 
---output tmp/ --dataset linemod_holepuncher_val
+python projects/SixDPose/visualize_json_results.py --input output/sixdpose/linemod/holepuncher/hcr_rcnn_Rh_50_FPN_1x_hm2_l1loss_hw0p5_ow0p5_tran/inference/coco_instances_results.json --output tmp/ --dataset linemod_holepuncher_val
 '''
 
 import argparse
@@ -29,6 +27,10 @@ _LARGE_MASK_AREA_THRESH = 120000
 _OFF_WHITE = (1.0, 1.0, 240.0 / 255)
 _BLACK = (0, 0, 0)
 _RED = (1.0, 0, 0)
+_BLUE = (0, 0, 1.0)
+_GREEN = (0, 1.0, 0)
+
+_KEYPOINT_THRESHOLD = 0.05
 
 
 def create_instances(predictions, image_size):
@@ -153,13 +155,19 @@ class SixDPoseVisualizer(Visualizer):
         """
         annos = dic.get("annotations", None)
         if annos:
-            if "segmentation" in annos[0]:
-                masks = [x["segmentation"] for x in annos]
-            else:
-                masks = None
+            # if "segmentation" in annos[0]:
+            #     masks = [x["segmentation"] for x in annos]
+            # else:
+            #     masks = None
+            masks = None
             if "keypoints" in annos[0]:
                 keypts = [x["keypoints"] for x in annos]
                 keypts = np.array(keypts).reshape(len(annos), -1, 3)
+                corners = [x["corner_2d"] for x in annos]
+                corners = np.array(corners).reshape(len(annos), -1, 2)
+                corners = np.concatenate((corners, 2 * np.ones((corners.shape[0], corners.shape[1], 1))), axis=-1)
+                keypts = np.concatenate((keypts, corners), axis=1)
+                # print(keypts)
             else:
                 keypts = None
 
@@ -179,16 +187,16 @@ class SixDPoseVisualizer(Visualizer):
                 for i, a in zip(labels, annos)
             ]
             self.overlay_instances(
-                labels=labels, boxes=boxes, masks=masks, keypoints=keypts, assigned_colors=colors
+                labels=labels, boxes=boxes, masks=masks, keypoints=keypts, assigned_colors=colors, gt=True
             )
 
-        sem_seg = dic.get("sem_seg", None)
-        if sem_seg is None and "sem_seg_file_name" in dic:
-            with PathManager.open(dic["sem_seg_file_name"], "rb") as f:
-                sem_seg = Image.open(f)
-                sem_seg = np.asarray(sem_seg, dtype="uint8")
-        if sem_seg is not None:
-            self.draw_sem_seg(sem_seg, area_threshold=0, alpha=0.5)
+        # sem_seg = dic.get("sem_seg", None)
+        # if sem_seg is None and "sem_seg_file_name" in dic:
+        #     with PathManager.open(dic["sem_seg_file_name"], "rb") as f:
+        #         sem_seg = Image.open(f)
+        #         sem_seg = np.asarray(sem_seg, dtype="uint8")
+        # if sem_seg is not None:
+        #     self.draw_sem_seg(sem_seg, area_threshold=0, alpha=0.5)
         return self.output
 
     def overlay_instances(
@@ -199,7 +207,8 @@ class SixDPoseVisualizer(Visualizer):
         masks=None,
         keypoints=None,
         assigned_colors=None,
-        alpha=0.5
+        alpha=0.5,
+        gt=False
     ):
         """
         Args:
@@ -316,112 +325,79 @@ class SixDPoseVisualizer(Visualizer):
                     * 0.5
                     * self._default_font_size
                 )
-                self.draw_text(
-                    labels[i],
-                    text_pos,
-                    color=lighter_color,
-                    horizontal_alignment=horiz_align,
-                    font_size=font_size,
-                )
+                # self.draw_text(
+                #     labels[i],
+                #     text_pos,
+                #     color=lighter_color,
+                #     horizontal_alignment=horiz_align,
+                #     font_size=font_size,
+                # )
 
         # draw keypoints
         if keypoints is not None:
             for keypoints_per_instance in keypoints:
-                self.draw_and_connect_keypoints(keypoints_per_instance)
+                self.draw_and_connect_keypoints(keypoints_per_instance, gt)
 
         return self.output
 
-    # def draw_and_connect_keypoints(self, keypoints):
-    #     """
-    #     Draws keypoints of an instance and follows the rules for keypoint connections
-    #     to draw lines between appropriate keypoints. This follows color heuristics for
-    #     line color.
+    def draw_and_connect_keypoints(self, keypoints, gt=False):
+        """
+        Draws keypoints of an instance and follows the rules for keypoint connections
+        to draw lines between appropriate keypoints. This follows color heuristics for
+        line color.
 
-    #     Args:
-    #         keypoints (Tensor): a tensor of shape (K, 3), where K is the number of keypoints
-    #             and the last dimension corresponds to (x, y, probability).
+        Args:
+            keypoints (Tensor): a tensor of shape (K, 3), where K is the number of keypoints
+                and the last dimension corresponds to (x, y, probability).
 
-    #     Returns:
-    #         output (VisImage): image object with visualizations.
-    #     """
-    #     visible = {}
-    #     keypoint_names = self.metadata.get("keypoint_names")
-    #     for idx, keypoint in enumerate(keypoints):
-    #         # draw keypoint
-    #         x, y, prob = keypoint
-    #         if prob > _KEYPOINT_THRESHOLD:
-    #             self.draw_circle((x, y), color=_RED)
-    #             if keypoint_names:
-    #                 keypoint_name = keypoint_names[idx]
-    #                 visible[keypoint_name] = (x, y)
-    #             # draw kpt probs
-    #             lighter_color = self._change_color_brightness(_RED, brightness_factor=0.7)
-    #             self.draw_text(
-    #                     prob,
-    #                     (x, y),
-    #                     color=lighter_color,
-    #                     horizontal_alignment="center",
-    #                     font_size=self._default_font_size,
-    #                 )
+        Returns:
+            output (VisImage): image object with visualizations.
+        """
+        visible = {}
+        keypoint_names = self.metadata.get("keypoint_names")
+        for idx, keypoint in enumerate(keypoints):
+            # draw keypoint
+            x, y, prob = keypoint
+            if prob > _KEYPOINT_THRESHOLD:
+                if idx == 1:
+                    self.draw_circle((x, y), color=_RED, radius=10)
+                if keypoint_names:
+                    keypoint_name = keypoint_names[idx]
+                    visible[keypoint_name] = (x, y)
+                # draw kpt probs
+                # lighter_color = self._change_color_brightness(_RED, brightness_factor=0.7)
+                # self.draw_text(
+                #         '{}%'.format(int(prob * 100)),
+                #         (x, y),
+                #         color=lighter_color,
+                #         horizontal_alignment="center",
+                #         font_size=self._default_font_size,
+                #     )
 
-    #     if self.metadata.get("keypoint_connection_rules"):
-    #         for kp0, kp1, color in self.metadata.keypoint_connection_rules:
-    #             if kp0 in visible and kp1 in visible:
-    #                 x0, y0 = visible[kp0]
-    #                 x1, y1 = visible[kp1]
-    #                 color = tuple(x / 255.0 for x in color)
-    #                 self.draw_line([x0, x1], [y0, y1], color=color)
-    #     return self.output
+        if self.metadata.get("keypoint_connection_rules"):
+            for kp0, kp1, color in self.metadata.keypoint_connection_rules:
+                if kp0 in visible and kp1 in visible:
+                    x0, y0 = visible[kp0]
+                    x1, y1 = visible[kp1]
+                    # color = tuple(x / 255.0 for x in color)
+                    if gt:
+                        self.draw_line([x0, x1], [y0, y1], color=_GREEN, linewidth=2)
+                    else:
+                        self.draw_line([x0, x1], [y0, y1], color=_BLUE, linewidth=2)
+        return self.output
 
     def _convert_keypoints(self, keypoints):
         if isinstance(keypoints, Keypoints):
             keypoints = keypoints.tensor
-        keypoints = np.asarray(keypoints).reshape((-1, 9, 5))
-        keypoints = keypoints[:, :, [0, 1, 4]]
+        keypoints = np.asarray(keypoints)
+        try:
+            # hcrnet case
+            keypoints = keypoints.reshape((-1, 9, 5))
+            keypoints = keypoints[:, :, [0, 1, 4]]
+        except:
+            # gt or crpnet case
+            keypoints = keypoints.reshape((-1, 9, 3))
         return keypoints
-
-    # def draw_dataset_dict(self, dic):
-    #     """
-    #     Draw annotations/segmentaions in Detectron2 Dataset format.
-
-    #     Args:
-    #         dic (dict): annotation/segmentation data of one image, in Detectron2 Dataset format.
-
-    #     Returns:
-    #         output (VisImage): image object with visualizations.
-    #     """
-    #     annos = dic.get("annotations", None)
-    #     if annos:
-    #         if "segmentation" in annos[0]:
-    #             masks = [x["segmentation"] for x in annos]
-    #         else:
-    #             masks = None
-    #         if "keypoints" in annos[0]:
-    #             keypts = [x["keypoints"] for x in annos]
-    #             keypts = np.array(keypts).reshape(len(annos), -1, 3)
-    #         else:
-    #             keypts = None
-
-    #         boxes = [BoxMode.convert(x["bbox"], x["bbox_mode"], BoxMode.XYXY_ABS) for x in annos]
-
-    #         labels = [x["category_id"] for x in annos]
-    #         colors = None
-    #         if self._instance_mode == ColorMode.SEGMENTATION and self.metadata.get("thing_colors"):
-    #             colors = [
-    #                 self._jitter([x / 255 for x in self.metadata.thing_colors[c]]) for c in labels
-    #             ]
-    #         names = self.metadata.get("thing_classes", None)
-    #         if names:
-    #             labels = [names[i] for i in labels]
-    #         labels = [
-    #             "{}".format(i) + ("|crowd" if a.get("iscrowd", 0) else "")
-    #             for i, a in zip(labels, annos)
-    #         ]
-    #         self.overlay_instances(
-    #             labels=labels, boxes=boxes, masks=masks, keypoints=keypts, assigned_colors=colors
-    #         )
-
-    #     return self.output
 
 
 if __name__ == "__main__":
@@ -468,9 +444,10 @@ if __name__ == "__main__":
 
         predictions = create_instances(pred_by_image[dic["image_id"]], img.shape[:2])
         vis = SixDPoseVisualizer(img, metadata)
+        vis.draw_dataset_dict(dic)
         vis_pred = vis.draw_instance_predictions(predictions).get_image()
 
-        # vis = Visualizer(img, metadata)
+        # vis = SixDPoseVisualizer(img, metadata)
         # vis_gt = vis.draw_dataset_dict(dic).get_image()
 
         # concat = np.concatenate((vis_pred, vis_gt), axis=1)
