@@ -216,6 +216,11 @@ class ROIPooler(nn.Module):
         level_assignments = assign_boxes_to_levels(
             box_lists, self.min_level, self.max_level, self.canonical_box_size, self.canonical_level
         )
+        # with open('pooler_level.txt', 'a') as f:
+        #     if level_assignments.shape[0] < 10:
+        #         f.write(str(level_assignments.data.cpu().numpy()))
+        #         f.write('\n')
+        #     f.close()
 
         num_boxes = len(pooler_fmt_boxes)
         num_channels = x[0].shape[1]
