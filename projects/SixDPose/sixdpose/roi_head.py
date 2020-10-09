@@ -398,7 +398,7 @@ class HCRROIHeads(StandardROIHeads):
                 hcr_outputs = {'heatmap': empty_tensor, 'offset': empty_tensor, 'variance': empty_tensor}
 
             hcr_inference(hcr_outputs, instances)
-            return instances
+            return instances, features
 
     def forward(self, images, features, proposals, targets=None):
         features_list = [features[f] for f in self.in_features]
@@ -409,5 +409,6 @@ class HCRROIHeads(StandardROIHeads):
         if self.training:
             losses.update(self._forward_hcr(features_list, instances))
         else:
-            instances = self._forward_hcr(features_list, instances)
+            instances, features = self._forward_hcr(features_list, instances)
+            return instances, losses, features
         return instances, losses

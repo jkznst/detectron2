@@ -9,6 +9,7 @@ It is an example of how a user might use detectron2 for a new project.
 
 import os
 import torch
+import numpy as np
 
 import detectron2.utils.comm as comm
 from detectron2.checkpoint import DetectionCheckpointer
@@ -71,6 +72,36 @@ class Trainer(DefaultTrainer):
         with open(save_file, "wb") as f:
             torch.save(data, f)
 
+    @classmethod
+    def vis_feat(cls, cfg, model, outdir='./vis_feat/'):
+        model.eval()
+        for idx, dataset_name in enumerate(cfg.DATASETS.TEST):
+            data_loader = cls.build_test_loader(cfg, dataset_name)
+            with torch.no_grad():
+                for idx, inputs in enumerate(data_loader):
+                    print(idx)
+                    outputs = model(inputs)
+                    # whole img det feat
+                    p2=outputs['p2'][0].data.cpu().numpy()
+                    p3=outputs['p3'][0].data.cpu().numpy()
+                    p4=outputs['p4'][0].data.cpu().numpy()
+                    p5=outputs['p5'][0].data.cpu().numpy()
+
+                    # whole img pose feat
+                    # p2=outputs[0][0].data.cpu().numpy()
+                    # p3=outputs[1][0].data.cpu().numpy()
+                    # p4=outputs[2][0].data.cpu().numpy()
+                    # p5=outputs[3][0].data.cpu().numpy()
+                    # print(p2.shape, p3.shape, p4.shape, p5.shape)
+                    np.save(outdir+'{:05d}_p2.npy'.format(idx), p2)
+                    np.save(outdir+'{:05d}_p3.npy'.format(idx), p3)
+                    np.save(outdir+'{:05d}_p4.npy'.format(idx), p4)
+                    np.save(outdir+'{:05d}_p5.npy'.format(idx), p5)
+
+                    # roi_feat = outputs[0].data.cpu().numpy()
+                    # np.save(outdir + "{:05d}.npy".format(idx), roi_feat)
+
+
 def setup(args):
     cfg = get_cfg()
     add_sixdpose_config(cfg)
@@ -95,6 +126,14 @@ def main(args):
         if comm.is_main_process():
             verify_results(cfg, res)
         return res
+
+    if args.vis_feat:
+        model = Trainer.build_model(cfg)
+        DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
+            cfg.MODEL.WEIGHTS, resume=args.resume
+        )
+        Trainer.vis_feat(cfg, model)
+        return
 
     trainer = Trainer(cfg)
     trainer.resume_or_load(resume=args.resume)
