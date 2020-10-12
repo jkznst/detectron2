@@ -330,6 +330,8 @@ SPLITS = {
     # tless datasets TODO
     "tless_toy_05_train": ("tless_toy/obj_05", "tless_toy/obj_05/train_obj_05.json"),
     "tless_toy_05_val": ("tless_toy/obj_05", "tless_toy/obj_05/train_obj_05.json"),
+    "tless_pbr_05_train": ("tless_pbr", "tless_pbr/train_obj_05.json"),
+    "tless_prb_05_val": ("tless_pbr", "tless_pbr/val_obj_05.json"),
     # toy dataset
     "toy_01_train": ("toy/cube", "toy/cube/train_cube.json"),
     "toy_01_val": ("toy/cube", "toy/cube/val_cube.json"),

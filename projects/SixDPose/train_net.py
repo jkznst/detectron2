@@ -20,7 +20,7 @@ from detectron2.evaluation import DatasetEvaluators, verify_results
 from detectron2.utils.logger import setup_logger
 
 # train on linemod
-from sixdpose import DatasetMapper, add_sixdpose_config, COCOEvaluator, SixDPoseEvaluator
+from sixdpose import DatasetMapper, add_sixdpose_config, COCOEvaluator, SixDPoseLinemodEvaluator
 
 # train on coco
 # from detectron2.evaluation import COCOEvaluator
@@ -33,7 +33,7 @@ class Trainer(DefaultTrainer):
         output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
         evaluators = [COCOEvaluator(dataset_name, cfg, True, output_folder)]
         if True:
-            evaluators.append(SixDPoseEvaluator(dataset_name, cfg, True, output_folder))
+            evaluators.append(SixDPoseLinemodEvaluator(dataset_name, cfg, True, output_folder))
         return DatasetEvaluators(evaluators)
 
     @classmethod
