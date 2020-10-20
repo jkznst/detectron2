@@ -11,6 +11,7 @@ def add_sixdpose_config(cfg):
     _C = cfg
 
     _C.TEST.USE_ICP_REFINE = False
+    _C.TEST.VSD = False
 
     _C.MODEL.CRPNET_ON = False
     _C.MODEL.HCR_ON = False

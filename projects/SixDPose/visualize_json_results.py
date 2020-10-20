@@ -337,7 +337,7 @@ class SixDPoseVisualizer(Visualizer):
         if keypoints is not None:
             for keypoints_per_instance in keypoints:
                 self.draw_and_connect_keypoints(keypoints_per_instance, gt)
-
+            # self.draw_and_connect_keypoints(keypoints[0], gt)
         return self.output
 
     def draw_and_connect_keypoints(self, keypoints, gt=False):
